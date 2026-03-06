@@ -10,6 +10,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from rich.live import Live
+from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.spinner import Spinner
 from rich.text import Text
@@ -47,8 +48,8 @@ def _estimate_history_tokens(message_history: list) -> int:
         return 0
 
 
-async def run_session(model: str) -> None:
-    agent = create_agent(model)
+async def run_session(model: str, beast_context: str = "") -> None:
+    agent = create_agent(model, system_prompt_addition=beast_context)
     message_history = load_history()
 
     session: PromptSession = PromptSession(
@@ -56,9 +57,20 @@ async def run_session(model: str) -> None:
         style=PROMPT_STYLE,
     )
 
-    print_welcome()
+    if beast_context:
+        console.print(Panel(
+            Text.assemble(
+                ("Helena Code", "bold cyan"), " · ", ("Beast Mode Follow-up", "bold red"),
+                "\n\n", ("Ask follow-up questions about the completed task.\n", "dim"),
+                ('Type your request, or "exit" to quit.', "dim"),
+            ),
+            border_style="cyan",
+            padding=(1, 2),
+        ))
+    else:
+        print_welcome()
 
-    if message_history:
+    if message_history and not beast_context:
         print_info(f"Resuming conversation ({len(message_history)} messages in history). Use /clear to start fresh.\n")
 
     skills = list_skill_names()
@@ -217,12 +229,63 @@ def _print_help(skills: list[str]) -> None:
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="helena",
+        description="Helena Code — AI Coding Assistant",
+        add_help=True,
+    )
+    parser.add_argument(
+        "--beast",
+        nargs="?",
+        const=True,
+        metavar="TASK",
+        help="Beast Mode: spawn multiple parallel agents to tackle a task. "
+             "Provide the task inline or omit to be prompted.",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        metavar="MODEL_ID",
+        help="Override the Claude model (default: claude-sonnet-4-6).",
+    )
+    args = parser.parse_args()
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("Error: ANTHROPIC_API_KEY environment variable is not set.", file=sys.stderr)
         sys.exit(1)
 
-    model = os.environ.get("HELENA_MODEL", "claude-sonnet-4-6")
+    model = args.model or os.environ.get("HELENA_MODEL", "claude-sonnet-4-6")
+
+    if args.beast is not None:
+        from .beast import run_beast_mode
+
+        if isinstance(args.beast, str) and args.beast:
+            task = args.beast
+        else:
+            try:
+                task = input("\n⚡ Beast Mode — Enter task: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nAborted.", file=sys.stderr)
+                sys.exit(0)
+            if not task:
+                print("No task provided.", file=sys.stderr)
+                sys.exit(1)
+
+        try:
+            beast_context = asyncio.run(run_beast_mode(task, model))
+        except KeyboardInterrupt:
+            beast_context = ""
+
+        # Drop into interactive session so the user can follow up
+        console.print()
+        try:
+            asyncio.run(run_session(model, beast_context=beast_context))
+        except KeyboardInterrupt:
+            pass
+        return
 
     try:
         asyncio.run(run_session(model))

@@ -31,6 +31,7 @@ async def run_bash(command: str, timeout: int = 30, working_directory: str | Non
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            start_new_session=True,  # own process group → killpg terminates background children too
         )
 
         try:
@@ -38,8 +39,19 @@ async def run_bash(command: str, timeout: int = 30, working_directory: str | Non
                 proc.communicate(), timeout=timeout
             )
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.communicate()
+            # Kill the entire process group so background processes spawned by
+            # the shell (e.g. `node server.js &`) are also terminated and the
+            # stdout/stderr pipes are closed.
+            import os
+            import signal
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                proc.kill()
+            try:
+                await asyncio.wait_for(proc.communicate(), timeout=5)
+            except Exception:
+                pass
             result = f"[Command timed out after {timeout} seconds]"
             emit_return("run_bash", result)
             return result
