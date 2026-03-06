@@ -24,6 +24,28 @@ PROMPT_HISTORY_FILE = os.path.expanduser("~/.helena_prompt_history")
 
 PROMPT_STYLE = Style.from_dict({"prompt": "ansicyan bold"})
 
+# Context window sizes by model (input tokens)
+_CONTEXT_WINDOWS: dict[str, int] = {
+    "claude-opus-4-6": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-haiku-4-5": 200_000,
+}
+
+
+def _get_context_window(model_name: str) -> int | None:
+    for key, size in _CONTEXT_WINDOWS.items():
+        if key in model_name:
+            return size
+    return None
+
+
+def _estimate_history_tokens(message_history: list) -> int:
+    """Estimate token count of message history (4 chars ≈ 1 token)."""
+    try:
+        return sum(len(str(m)) for m in message_history) // 4
+    except Exception:
+        return 0
+
 
 async def run_session(model: str) -> None:
     agent = create_agent(model)
@@ -75,7 +97,7 @@ async def run_session(model: str) -> None:
 
         try:
             console.print()
-            await _run_turn(agent, user_input, message_history)
+            await _run_turn(agent, user_input, message_history, model)
             save_history(message_history)
         except KeyboardInterrupt:
             console.print("\n[dim]Interrupted.[/dim]")
@@ -86,7 +108,7 @@ async def run_session(model: str) -> None:
                 traceback.print_exc()
 
 
-async def _run_turn(agent: Any, user_input: str, message_history: list) -> None:
+async def _run_turn(agent: Any, user_input: str, message_history: list, model: str = "") -> None:
     from rich.console import Group
 
     start_time = time.monotonic()
@@ -132,19 +154,19 @@ async def _run_turn(agent: Any, user_input: str, message_history: list) -> None:
             await asyncio.sleep(0.1)
 
     token = set_handler(_on_tool_event)
+    usage = None
     try:
         with Live(console=console, refresh_per_second=20, transient=False) as live:
             ticker = asyncio.create_task(_ticker(live))
             try:
-                async with agent.run_stream(
+                result = await agent.run(
                     user_input,
                     message_history=message_history,
-                ) as result:
-                    async for chunk in result.stream_text(delta=True):
-                        response_text += chunk
-                        _render(live)
-                    usage = result.usage()
-                    message_history[:] = list(result.all_messages())
+                )
+                response_text = result.output
+                usage = result.usage()
+                message_history[:] = list(result.all_messages())
+                _render(live)
             finally:
                 ticker.cancel()
                 _render(live)
@@ -163,6 +185,11 @@ async def _run_turn(agent: Any, user_input: str, message_history: list) -> None:
             parts_stats.append(f"out {usage.output_tokens:,}")
         if usage.total_tokens:
             parts_stats.append(f"total {usage.total_tokens:,} tokens")
+        ctx_window = _get_context_window(model)
+        if ctx_window and message_history:
+            est = _estimate_history_tokens(message_history)
+            pct = est / ctx_window * 100
+            parts_stats.append(f"~{pct:.1f}% ctx")
     console.print(Text("  " + " · ".join(parts_stats), style="dim"))
 
 
