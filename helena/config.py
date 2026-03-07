@@ -29,9 +29,10 @@ CONTEXT_WINDOWS: dict[str, int] = {
     "claude-haiku-4": 200_000,
     # OpenAI
     "gpt-4o": 128_000,
-    "gpt-4-turbo": 128_000,
+    "gpt-4.1": 1_047_576,
     "o1": 200_000,
     "o3": 200_000,
+    "o4-mini": 200_000,
     # Google
     "gemini-2.0-flash": 1_048_576,
     "gemini-1.5-pro": 2_097_152,
@@ -60,11 +61,16 @@ MODEL_PRICING: list[tuple[str, float, float]] = [
     ("claude-haiku-3-5",      0.80,   4.00),
     ("claude-haiku-3",        0.25,   1.25),
     # OpenAI — https://openai.com/api/pricing
+    ("gpt-4.1-nano",          0.10,   0.40),
+    ("gpt-4.1-mini",          0.40,   1.60),
+    ("gpt-4.1",               2.00,   8.00),
     ("gpt-4o-mini",           0.15,   0.60),
     ("gpt-4o",                2.50,  10.00),
-    ("gpt-4-turbo",          10.00,  30.00),
+    ("o4-mini",               1.10,   4.40),
+    ("o3-pro",               20.00,  80.00),
     ("o3-mini",               1.10,   4.40),
-    ("o3",                   10.00,  40.00),
+    ("o3",                    2.00,   8.00),
+    ("o1-pro",              150.00, 600.00),
     ("o1-mini",               1.10,   4.40),
     ("o1",                   15.00,  60.00),
     # Google — https://ai.google.dev/pricing

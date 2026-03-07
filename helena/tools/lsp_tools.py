@@ -12,11 +12,12 @@ _OPERATIONS = ("hover", "definition", "references", "document_symbols")
 async def lsp_diagnostics(path: str) -> str:
     """Get language server diagnostics (errors, warnings, hints) for a file.
 
-    Always call this after write_file or edit_file to catch type errors,
-    undefined references, and other static analysis issues immediately.
+    Diagnostics are automatically appended to write_file and update_file results,
+    so you do not need to call this after every edit. Use this tool for an
+    on-demand check of any file that you have not just written.
 
     Requires an LSP server installed for the file type:
-      Python:          pip install pyright
+      Python:          pip install python-lsp-server pylsp-mypy mypy
       TypeScript/JS:   npm i -g typescript-language-server typescript
       Rust:            rustup component add rust-analyzer
       Go:              go install golang.org/x/tools/gopls@latest
@@ -44,7 +45,8 @@ async def lsp_diagnostics(path: str) -> str:
         emit_return("lsp_diagnostics", result)
         return result
 
-    diags = await client.get_diagnostics(abs_path)
+    wait_ms = getattr(client, '_server_diag_wait_ms', 10000)
+    diags = await client.get_diagnostics(abs_path, wait_ms=wait_ms)
 
     if not diags:
         result = "No diagnostics — file looks clean."

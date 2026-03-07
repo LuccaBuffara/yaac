@@ -70,10 +70,11 @@ def _uri_to_path(uri: str) -> str:
 class LSPClient:
     """Manages a connection to one LSP server process."""
 
-    def __init__(self, server_id: str, command: list[str], root: str):
+    def __init__(self, server_id: str, command: list[str], root: str, diag_wait_ms: int = 10000):
         self.server_id = server_id
         self._command = command
         self._root = root
+        self._server_diag_wait_ms = diag_wait_ms
         self._protocol: LSPProtocol | None = None
         self._proc: asyncio.subprocess.Process | None = None
         self._open_files: dict[str, int] = {}   # abs_path -> version
@@ -172,7 +173,7 @@ class LSPClient:
         except Exception:
             pass
 
-    async def get_diagnostics(self, path: str, wait_ms: int = 2500) -> list[dict]:
+    async def get_diagnostics(self, path: str, wait_ms: int = 8000) -> list[dict]:
         """Open/refresh the file, wait up to wait_ms for diagnostics, and return them."""
         abs_path = str(Path(path).resolve())
         event = asyncio.Event()

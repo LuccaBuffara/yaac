@@ -1,6 +1,7 @@
 """Terminal UI utilities for Helena Code."""
 
 from rich.console import Console, Group
+from rich.columns import Columns
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -9,7 +10,7 @@ from rich.theme import Theme
 HELENA_THEME = Theme(
     {
         "helena.prompt": "bold cyan",
-        "helena.tool": "dim yellow",
+        "helena.tool": "dim #FFD700",
         "helena.tool_result": "dim green",
         "helena.error": "bold red",
         "helena.success": "bold green",
@@ -24,69 +25,95 @@ console = Console(theme=HELENA_THEME)
 # ASCII art
 # ---------------------------------------------------------------------------
 
-# Each letter is 6 chars wide; letters separated by 2 spaces → 47 chars total
-_HELENA_ART = (
-    " ██  ██  ██████  ██      ██████  ██  ██    ██  \n"
-    " ██  ██  ██      ██      ██      ███ ██   ████ \n"
-    " ██████  ████    ██      ████    ██ ███  ██████\n"
-    " ██  ██  ██      ██      ██      ██  ██  ██  ██\n"
-    " ██  ██  ██████  ██████  ██████  ██  ██  ██  ██"
-)
+# Slim BEAST
+_BEAST_ART = """\
+ ████    ██████    ▄█▄    █████  ██████
+ █   █   █        █ █   ▀█         █  
+ ████    ████    █████    ████      █  
+ █   █   █       █   █       █     █  
+ ████    ██████  █   █   █████      █  """
 
-# B-E-A-S-T, each letter 6 chars wide, separated by 2 spaces → 38 chars total
-_BEAST_ART = (
-    " ████    ██████    ██     █████  ██████\n"
-    " ██  ██  ██       ████   ██        ██  \n"
-    " ████    ████    ██████   ████     ██  \n"
-    " ██  ██  ██      ██  ██      ██    ██  \n"
-    " ████    ██████  ██  ██  █████     ██  "
-)
+_BEAST_COLORS = [
+    "#FF4040",
+    "#FF5533",
+    "#FF6600",
+    "#FF3355",
+    "#FF1040",
+]
+
+def _gradient_art(art: str, colors: list[str]) -> Text:
+    """Render ASCII art with a per-row colour gradient."""
+    t = Text()
+    for i, line in enumerate(art.splitlines()):
+        color = colors[min(i, len(colors) - 1)]
+        t.append(line + ("\n" if i < art.count("\n") else ""), style=f"bold {color}")
+    return t
 
 
 # ---------------------------------------------------------------------------
 # Banners
 # ---------------------------------------------------------------------------
 
+
 def print_welcome() -> None:
-    art = Text(_HELENA_ART, style="bold cyan")
-    info = Text.assemble(
-        "\n  ",
-        ("C O D E", "bold white"),
-        ("  ·  AI Coding Assistant  ·  Powered by Claude", "dim"),
-        "\n\n  ",
+    wordmark = Text.assemble(
+        ("Helena", "bold #00BFFF"),
+        (" Code", "bold #7B61FF"),
+        ("  ·  ", "dim #333366"),
+        ("AI Coding Agent", "dim white"),
+    )
+    hint = Text.assemble(
+        (" ⌨  ", "dim #00BFFF"),
         ("type a request", "dim"),
         ("  ·  ", "dim"),
         ("/help", "bold dim"),
         ("  ·  ", "dim"),
-        ("exit", "bold dim"),
+        ("exit", "bold #BF5FFF"),
     )
-    console.print(Panel(Group(art, info), border_style="cyan", padding=(1, 2)))
+    console.print(
+        Panel(
+            Group(wordmark, hint),
+            border_style="#7B61FF",
+            padding=(0, 2),
+        )
+    )
     console.print()
 
 
 def print_beast_banner() -> None:
-    art = Text(_BEAST_ART, style="bold red")
-    info = Text.assemble(
-        "\n  ",
+    art = _gradient_art(_BEAST_ART, _BEAST_COLORS)
+    badge_line = Text.assemble(
+        (" ◈ ", "bold #FF4040"),
         ("M O D E", "bold white"),
-        ("  ·  Multi-agent parallel execution  ·  Powered by Claude", "dim"),
+        ("  ", ""),
+        ("Multi-agent parallel execution", "bold #FF6600"),
     )
-    console.print(Panel(Group(art, info), border_style="red", padding=(1, 2)))
+    console.print(Panel(Group(art, Text(""), badge_line), border_style="#FF4040", padding=(1, 3)))
     console.print()
 
 
 def print_beast_followup_banner() -> None:
-    art = Text(_BEAST_ART, style="bold red")
-    info = Text.assemble(
-        "\n  ",
-        ("⚡ Follow-up session", "bold white"),
-        ("  ·  Ask about what the agents just completed.", "dim"),
-        "\n\n  ",
+    art = _gradient_art(_BEAST_ART, _BEAST_COLORS)
+    badge_line = Text.assemble(
+        (" ⚡ ", "bold #FF6600"),
+        ("Follow-up session", "bold white"),
+        ("  —  ", "dim"),
+        ("Ask about what the agents just completed.", "dim"),
+    )
+    hint = Text.assemble(
+        (" ⌨  ", "dim #00BFFF"),
         ("type a request", "dim"),
         ("  ·  ", "dim"),
-        ("exit", "bold dim"),
+        ("exit", "bold #BF5FFF"),
     )
-    console.print(Panel(Group(art, info), border_style="cyan", padding=(1, 2)))
+    console.print(
+        Panel(
+            Group(art, Text(""), badge_line, Text(""), hint),
+            border_style="#FF4040",
+            padding=(1, 3),
+            subtitle="[dim #443333]  ⬡  BEAST/MODE  ⬡  [/]",
+        )
+    )
     console.print()
 
 

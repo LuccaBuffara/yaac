@@ -12,10 +12,13 @@ async def _lsp_diagnostics_suffix(path: str) -> str:
     """Return a formatted diagnostics block to append to a tool result, or '' if unavailable."""
     try:
         from ..lsp.manager import get_client
-        client = await get_client(str(Path(path).expanduser().resolve()))
+        abs_path = str(Path(path).expanduser().resolve())
+        client = await get_client(abs_path)
         if client is None:
             return ""
-        diags = await client.get_diagnostics(path)
+        # Use the server's configured wait time so slow servers (e.g. mypy) aren't cut short.
+        wait_ms = getattr(client, '_server_diag_wait_ms', 10000)
+        diags = await client.get_diagnostics(abs_path, wait_ms=wait_ms)
         if not diags:
             return "\n\nLSP: no diagnostics — file looks clean."
         lines = []
@@ -29,7 +32,9 @@ async def _lsp_diagnostics_suffix(path: str) -> str:
             prefix = f"[{source}] " if source else ""
             lines.append(f"  {sev} {ln}:{col}  {prefix}{msg}")
         return "\n\nLSP diagnostics:\n" + "\n".join(lines)
-    except Exception:
+    except Exception as exc:
+        import sys
+        print(f"[LSP] diagnostics error: {exc}", file=sys.stderr)
         return ""
 
 
