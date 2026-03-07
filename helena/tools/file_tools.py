@@ -6,7 +6,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from ..tool_events import emit_call, emit_return, emit_diff, emit_patch
+from ..tool_events import emit_call, emit_return, emit_patch
 from ..lsp.client import SEVERITY
 
 
@@ -70,29 +70,7 @@ async def write_file(path: str, content: str) -> str:
     return result
 
 
-async def edit_file(path: str, old_string: str, new_string: str) -> str:
-    """Replace an exact string match in a file (must be unique).
-    Whitespace/indentation must match exactly. Use write_file for new files.
-
-    Args:
-        path: Path to the file.
-        old_string: Exact string to find (must appear exactly once).
-        new_string: Replacement string.
-
-    Returns:
-        Success or error message.
-    """
-    emit_call("edit_file", {"path": path})
-    result, old_str, new_str = await asyncio.to_thread(_edit_file_sync, path, old_string, new_string)
-    if old_str is not None:
-        emit_diff(path, old_str, new_str)
-    if result.startswith("Successfully"):
-        result += await _lsp_diagnostics_suffix(path)
-    emit_return("edit_file", result)
-    return result
-
-
-async def patch_file(path: str, diff: str) -> str:
+async def update_file(path: str, diff: str) -> str:
     """Apply a unified diff (@@ hunks) to a file. Token-efficient alternative to
     edit_file for multi-location changes — only changed lines + context needed.
     --- / +++ headers are optional.
@@ -104,12 +82,12 @@ async def patch_file(path: str, diff: str) -> str:
     Returns:
         Success or error message.
     """
-    emit_call("patch_file", {"path": path})
-    result = await asyncio.to_thread(_patch_file_sync, path, diff)
+    emit_call("update_file", {"path": path})
+    result = await asyncio.to_thread(_update_file_sync, path, diff)
     if result.startswith("Successfully"):
         emit_patch(path, diff)
         result += await _lsp_diagnostics_suffix(path)
-    emit_return("patch_file", result)
+    emit_return("update_file", result)
     return result
 
 
@@ -167,32 +145,7 @@ def _write_file_sync(path: str, content: str) -> str:
         return f"Error writing file: {e}"
 
 
-def _edit_file_sync(path: str, old_string: str, new_string: str) -> tuple[str, str | None, str | None]:
-    file_path = Path(path).expanduser().resolve()
-
-    if not file_path.exists():
-        return f"Error: File not found: {path}", None, None
-
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-
-        count = content.count(old_string)
-        if count == 0:
-            return f"Error: String not found in {path}. Make sure the string matches exactly.", None, None
-        if count > 1:
-            return f"Error: Found {count} matches in {path}. Provide more context to make it unique.", None, None
-
-        new_content = content.replace(old_string, new_string, 1)
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(new_content)
-
-        return f"Successfully edited {file_path}", old_string, new_string
-    except Exception as e:
-        return f"Error editing file: {e}", None, None
-
-
-def _patch_file_sync(path: str, diff: str) -> str:
+def _update_file_sync(path: str, diff: str) -> str:
     import subprocess
 
     file_path = Path(path).expanduser().resolve()

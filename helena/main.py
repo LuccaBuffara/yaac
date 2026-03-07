@@ -247,10 +247,6 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
             console.print(f"  ⚙  {tool_name}({arg_str})", style="dim")
             spinner.text = f"{tool_name}..."
             spinner.start()
-        elif event_type == "diff" and isinstance(data, dict):
-            spinner.stop()
-            _print_diff(tool_name, data["old"], data["new"])
-            spinner.start()
         elif event_type == "patch" and isinstance(data, dict):
             spinner.stop()
             _print_patch(tool_name, data["diff"])
@@ -358,24 +354,6 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
 
 
 
-_LANG_MAP: dict[str, str] = {
-    ".py": "python", ".js": "javascript", ".ts": "typescript",
-    ".tsx": "tsx", ".jsx": "jsx", ".rs": "rust", ".go": "go",
-    ".java": "java", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
-    ".c": "c", ".h": "c", ".hpp": "cpp", ".cs": "csharp",
-    ".rb": "ruby", ".php": "php", ".swift": "swift", ".kt": "kotlin",
-    ".sh": "bash", ".zsh": "bash", ".bash": "bash",
-    ".yaml": "yaml", ".yml": "yaml", ".json": "json", ".toml": "toml",
-    ".md": "markdown", ".html": "html", ".css": "css", ".scss": "scss",
-    ".sql": "sql", ".xml": "xml",
-}
-
-
-def _detect_language(path: str) -> str:
-    from pathlib import Path as P
-    return _LANG_MAP.get(P(path).suffix.lower(), "text")
-
-
 def _print_patch(path: str, diff: str) -> None:
     from rich.syntax import Syntax
     from rich.panel import Panel as RPanel
@@ -392,22 +370,6 @@ def _print_patch(path: str, diff: str) -> None:
         border_style="cyan", padding=(0, 1),
     ))
 
-
-def _print_diff(path: str, old_str: str, new_str: str) -> None:
-    from rich.syntax import Syntax
-    from rich.panel import Panel as RPanel
-    from rich.console import Group as RGroup
-
-    lang = _detect_language(path)
-    filename = path.split("/")[-1]
-
-    removed = Syntax(old_str.rstrip("\n"), lang, theme="monokai", background_color="default", word_wrap=True)
-    added   = Syntax(new_str.rstrip("\n"), lang, theme="monokai", background_color="default", word_wrap=True)
-
-    console.print(RGroup(
-        RPanel(removed, title=f"[red]− removed[/red]  [dim]{filename}[/dim]", border_style="red",   padding=(0, 1)),
-        RPanel(added,   title=f"[green]+ added[/green]  [dim]{filename}[/dim]",   border_style="green", padding=(0, 1)),
-    ))
 
 
 def _print_skills(skills: list[str]) -> None:
