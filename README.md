@@ -74,6 +74,7 @@ Just type your request at the `>` prompt:
 | `run_bash` | Execute shell commands |
 | `glob_search` | Find files by glob pattern |
 | `grep_search` | Search file contents by regex |
+| `plan_mode` | Create a `TODO.md` plan for very complex tasks |
 
 ## Development
 
@@ -84,3 +85,9 @@ pip install -e ".[dev]"
 # Run directly without installing
 python -m yaac.main
 ```
+
+## Planning behavior
+
+- For very complex tasks, YAAC should call `plan_mode` first to create a `TODO.md` checklist before implementation.
+- If a `TODO.md` file already exists in the workspace or relevant project directory, YAAC should read it and use it as planning context.
+- `TODO.md` is intended to hold the ordered steps YAAC will execute for that task.
