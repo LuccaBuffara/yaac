@@ -3,6 +3,7 @@
 from pydantic_ai import Agent, Tool
 
 from .config import get_current_model, resolve_model
+from .context_files import build_context_prompt
 from .tools import (
     read_file,
     write_file,
@@ -20,6 +21,8 @@ from .tools import (
     lsp_query,
     todo_read,
     todo_write,
+    memory_read,
+    memory_write,
 )
 from .skills import init_skills, build_catalog, activate_skill, list_skill_names
 
@@ -44,6 +47,7 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - **Look for planning context**: If the user provides an existing plan or planning artifact, read it and use it as context before starting work.
 - **Keep plans actionable**: Plans should be concrete, ordered, and directly tied to execution.
 - **Track progress with todos**: Use `todo_write` to create and update tasks for the current session. After completing a task, immediately mark it as `completed` via `todo_write`. Use `todo_read` at the start of work to see what's already been done and skip it. Todos are stored per-session in `.yaac/todos/` so parallel sessions never conflict. When all tasks are completed the todo file is automatically cleaned up.
+- **Write durable memory when useful**: Use `memory_write` to save important lasting facts about the user, the project, recurring preferences, or decisions that will help in current or future sessions. Keep memory concise, factual, and relevant; do not store secrets unless the user explicitly asks you to.
 
 ## Tool usage
 
@@ -61,6 +65,15 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - `plan_mode` — Delegate planning to a dedicated read-only planning agent
 - `todo_read` — Read all todos for the current session
 - `todo_write` — Create or update session-scoped todos (supports merge and replace modes)
+- `memory_read` — Read the durable project memory file for the current workspace
+- `memory_write` — Create or update the durable project memory file for the current workspace
+
+## Memory usage
+
+- Read existing memory with `memory_read` when it may affect the task.
+- Write memory with `memory_write` whenever you learn durable information worth preserving for future sessions, such as stable user preferences, project conventions, architecture decisions, or important workflow notes.
+- Do not store temporary trivia. Prefer concise bullet points or short sections.
+- Avoid storing secrets, tokens, passwords, or other highly sensitive data unless the user explicitly requests it.
 - `lsp_diagnostics` — Get real type errors and warnings from a language server after editing a file
 - `lsp_query` — Query the language server for hover info, go-to-definition, references, or document symbols
 
@@ -101,7 +114,8 @@ def create_agent(
     ensure_plan_mode_profile()
 
     model = resolve_model(model_name or get_current_model())
-    system_prompt = SYSTEM_PROMPT + build_catalog() + system_prompt_addition
+    context_prompt = build_context_prompt()
+    system_prompt = SYSTEM_PROMPT + build_catalog() + context_prompt + system_prompt_addition
 
     tools = [
         Tool(read_file, max_retries=3),
@@ -119,6 +133,8 @@ def create_agent(
         Tool(todo_write, max_retries=3),
         Tool(lsp_diagnostics, max_retries=3),
         Tool(lsp_query, max_retries=3),
+        Tool(memory_read, max_retries=3),
+        Tool(memory_write, max_retries=3),
     ]
 
     if list_skill_names():

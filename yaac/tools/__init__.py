@@ -5,6 +5,7 @@ from .subagent_tools import spawn_subagent
 from .meta_tools import create_skill, create_agent_profile, plan_mode, ensure_plan_mode_profile
 from .todo_tools import todo_read, todo_write
 from .lsp_tools import lsp_diagnostics, lsp_query
+from .memory_tools import memory_read, memory_write
 
 __all__ = [
     "read_file",
@@ -23,4 +24,6 @@ __all__ = [
     "todo_write",
     "lsp_diagnostics",
     "lsp_query",
+    "memory_read",
+    "memory_write",
 ]

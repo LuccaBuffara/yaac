@@ -23,6 +23,8 @@ from .config import (
 )
 
 _UNLIMITED = UsageLimits(request_limit=None)
+from .context_files import discover_agents_files, discover_memory_file
+from .tools.memory_tools import _memory_path, _DEFAULT_MEMORY_TEMPLATE
 from .history import (
     clear_history,
     trim_tool_results, trim_history, prune_old_tool_results, compact_history,
@@ -243,6 +245,32 @@ async def run_session(model: str, beast_context: str = "") -> None:
 
         if user_input.lower() == "/banner":
             print_welcome()
+            continue
+
+        if user_input.lower().startswith("/memory"):
+            if user_input.lower().strip() == "/memory init":
+                path = _memory_path()
+                if path.exists():
+                    print_info(f"Project memory already exists at [bold]{path}[/bold].")
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(_DEFAULT_MEMORY_TEMPLATE, encoding="utf-8")
+                    print_info(f"Created project memory at [bold]{path}[/bold].")
+                continue
+
+            agents_files = discover_agents_files()
+            memory_file = discover_memory_file()
+            if agents_files:
+                console.print("\n[bold cyan]AGENTS.md files[/bold cyan]")
+                for path in agents_files:
+                    console.print(f"  • [white]{path}[/white]")
+            else:
+                console.print("\n[dim]No AGENTS.md files discovered in this workspace lineage.[/dim]")
+            if memory_file and memory_file.exists():
+                console.print(f"\n[bold cyan]Project memory[/bold cyan]\n  • [white]{memory_file}[/white]\n")
+                console.print(Markdown(memory_file.read_text(encoding="utf-8")))
+            else:
+                console.print(f"\n[dim]No project memory found. Suggested path: {_memory_path()}[/dim]\n")
             continue
 
         if user_input.lower() == "/stats":
@@ -612,6 +640,8 @@ def _print_skills(skills: list[str]) -> None:
 def _print_help(skills: list[str]) -> None:
     console.print(
         "\n[bold cyan]YAAC[/bold cyan] — Commands:\n"
+        "  [cyan]/memory[/cyan]         Show the durable project memory file path and contents if present\n"
+        "  [cyan]/memory init[/cyan]    Create a starter .yaac/memory/MEMORY.md if missing\n"
         "  [cyan]/clear[/cyan]          Clear conversation history and reset costs\n"
         "  [cyan]/model[/cyan]          Open interactive provider/model picker\n"
         "  [cyan]/model <id>[/cyan]     Switch model directly (e.g. [dim]openai:gpt-4o[/dim])\n"

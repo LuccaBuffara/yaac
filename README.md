@@ -15,6 +15,8 @@ Runs in your terminal, reads and edits your files, executes commands — like Cl
 - ✅ **Session todos** — per-session task tracking so the agent never loses context mid-task
 - 💬 **Persistent history** — conversations saved to `.yaac/history.json`, compacted automatically
 - 🔍 **LSP integration** — real type errors and code intelligence (hover, go-to-definition, references)
+- 🧠 **Project memory** — durable `.yaac/memory/MEMORY.md` memory that is auto-injected into the agent prompt
+- 📋 **Hierarchical AGENTS.md** — Claude-style `AGENTS.md` files loaded from parent directories down to the current workspace
 - ⚡ **Streaming output** — text streams in real-time; tool calls shown inline
 - 🛑 **Interrupt & refine** — press `i` during a run to interrupt and add more details
 
@@ -88,6 +90,7 @@ Just type your request at the `>` prompt:
 | `/help` | Show help |
 | `/skills` | List loaded skills |
 | `/model` | Open interactive model picker |
+| `/memory` | Show discovered `AGENTS.md` files and project memory |
 | `/model <provider:model>` | Switch model (e.g. `openai:gpt-4o`) |
 | `/key` | Show API key status for current provider |
 | `/key <value>` | Set & save the API key for the current provider |
@@ -156,6 +159,8 @@ Use the format `provider:model-id` anywhere a model is expected.
 | `plan_mode` | Delegate planning to a dedicated read-only planning subagent |
 | `spawn_subagent` | Spawn an independent subagent with a fresh context |
 | `create_skill` | Persist a new reusable skill to `~/.yaac/skills/` |
+| `memory_read` | Read the durable project memory file |
+| `memory_write` | Create or update the durable project memory file |
 | `create_agent_profile` | Persist a new agent profile to `~/.yaac/agents/` |
 
 ### Session management
@@ -187,6 +192,29 @@ Full instructions in Markdown...
 ```
 
 The agent sees only the name and description at startup. Full instructions are loaded on-demand via the `activate_skill` tool when a task matches. Use `/skills` to list all loaded skills, or `create_skill` to let the agent create one automatically.
+
+---
+
+## AGENTS.md and MEMORY.md support
+
+YAAC now supports Claude-style workspace instruction files:
+
+- `AGENTS.md` files are discovered from the filesystem root down to the current working directory.
+- More local `AGENTS.md` files are treated as more specific when instructions conflict.
+- Project memory is loaded from either:
+  - `<project>/MEMORY.md`
+  - `<project>/.yaac/memory/MEMORY.md`
+
+Both are injected into the agent system prompt automatically at session startup.
+
+Use:
+
+```bash
+/memory
+/memory init
+```
+
+to inspect the discovered files or create a starter project memory file.
 
 ---
 
