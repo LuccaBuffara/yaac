@@ -517,14 +517,6 @@ def main() -> None:
         add_help=True,
     )
     parser.add_argument(
-        "--beast",
-        nargs="?",
-        const=True,
-        metavar="TASK",
-        help="Beast Mode: spawn multiple parallel agents to tackle a task. "
-             "Provide the task inline or omit to be prompted.",
-    )
-    parser.add_argument(
         "--model",
         default=None,
         metavar="PROVIDER:MODEL_ID",
@@ -540,34 +532,6 @@ def main() -> None:
     load_api_keys()
 
     model = args.model or load_default_model()
-
-    if args.beast is not None:
-        from .beast import run_beast_mode
-
-        if isinstance(args.beast, str) and args.beast:
-            task = args.beast
-        else:
-            try:
-                task = input("\n⚡ Beast Mode — Enter task: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                print("\nAborted.", file=sys.stderr)
-                sys.exit(0)
-            if not task:
-                print("No task provided.", file=sys.stderr)
-                sys.exit(1)
-
-        try:
-            beast_context = asyncio.run(run_beast_mode(task, model))
-        except KeyboardInterrupt:
-            beast_context = ""
-
-        # Drop into interactive session so the user can follow up
-        console.print()
-        try:
-            asyncio.run(run_session(model, beast_context=beast_context))
-        except KeyboardInterrupt:
-            pass
-        return
 
     try:
         asyncio.run(run_session(model))
