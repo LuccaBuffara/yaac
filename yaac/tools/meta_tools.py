@@ -1,7 +1,6 @@
 """Meta tools for creating skills, agent profiles, and planning agents."""
 
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic_ai.usage import UsageLimits
@@ -9,6 +8,7 @@ from pydantic_ai.usage import UsageLimits
 from ..tool_events import emit_call, emit_return
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
+_CHECKLIST_RE = re.compile(r"^- \[( |x)\] (.+)$", re.MULTILINE)
 _UNLIMITED = UsageLimits(request_limit=None)
 _PLAN_MODE_PROFILE = "plan-mode"
 _PLAN_MODE_DESCRIPTION = "Read-only planning agent that explores the codebase and designs implementation plans."
@@ -32,7 +32,8 @@ You will be provided with a set of requirements and optionally a perspective on 
 ## Your Process
 
 1. Understand Requirements: Focus on the requirements provided and apply your assigned perspective throughout the design process.
-2. Explore Thoroughly:
+2. Check Existing Progress: If existing session todos are provided, review them carefully. Tasks marked COMPLETED are ALREADY DONE — do NOT re-plan or duplicate them. Only plan remaining tasks and any new tasks.
+3. Explore Thoroughly:
    - Read any files provided to you in the initial prompt.
    - Find existing patterns and conventions using `glob_search`, `grep_search`, and `read_file`.
    - Understand the current architecture.
@@ -40,20 +41,36 @@ You will be provided with a set of requirements and optionally a perspective on 
    - Trace through relevant code paths.
    - Use `run_bash` ONLY for read-only operations such as `ls`, `git status`, `git log`, `git diff`, `find`, `grep`, `cat`, `head`, and `tail`.
    - NEVER use `run_bash` for `mkdir`, `touch`, `rm`, `cp`, `mv`, `git add`, `git commit`, `npm install`, `pip install`, or any file creation/modification.
-3. Design Solution:
+4. Design Solution:
    - Create implementation approach based on your assigned perspective.
    - Consider trade-offs and architectural decisions.
    - Follow existing patterns where appropriate.
-4. Detail the Plan:
+5. Detail the Plan:
    - Provide step-by-step implementation strategy.
    - Identify dependencies and sequencing.
    - Anticipate potential challenges.
 
-## Required Output
+## Required Output Format
+
+Your plan MUST use markdown checklist syntax for ALL actionable tasks:
+- `- [ ]` for tasks that still need to be done
+- `- [x]` for tasks that are already completed (preserve from existing session todos)
+
+Group tasks under logical headings. Example:
+
+### Phase 1: Setup
+- [x] Create database schema (already done)
+- [ ] Add migration script
+
+### Phase 2: Implementation
+- [ ] Implement API endpoint
+- [ ] Add input validation
+
+The caller will automatically parse these checklist items into session-scoped todos.
 
 End your response with:
 
-Critical Files for Implementation
+### Critical Files for Implementation
 
 List 3-5 files most critical for implementing this plan:
 
@@ -62,6 +79,20 @@ path/to/file2.ts - [Brief reason: e.g., "Interfaces to implement"]
 path/to/file3.ts - [Brief reason: e.g., "Pattern to follow"]
 
 REMEMBER: You can ONLY explore and plan. You CANNOT and MUST NOT write, edit, or modify any files. You do NOT have access to file editing tools."""
+
+
+def _parse_checklist(text: str) -> list[dict[str, str]]:
+    """Extract checklist items from plan text into todo dicts."""
+    todos: list[dict[str, str]] = []
+    for i, match in enumerate(_CHECKLIST_RE.finditer(text), start=1):
+        done = match.group(1) == "x"
+        content = match.group(2).strip()
+        todos.append({
+            "id": str(i),
+            "content": content,
+            "status": "completed" if done else "pending",
+        })
+    return todos
 
 
 async def create_skill(name: str, description: str, instructions: str) -> str:
@@ -141,13 +172,16 @@ async def create_agent_profile(name: str, description: str, system_prompt: str) 
 async def plan_mode(task: str, steps: list[str], directory: str = ".") -> str:
     """Run a dedicated read-only planning subagent for complex tasks.
 
+    The planner's checklist output is automatically parsed into session-scoped
+    todos stored in .yaac/todos/{session_id}.json.
+
     Args:
         task: Short description of the complex task being planned.
         steps: Optional planning prompts or desired phases to consider.
         directory: Directory to treat as the planning workspace context. Defaults to cwd.
 
     Returns:
-        The planning subagent's final response and the path to the written TODO.md plan.
+        The planning subagent's response and a summary of created todos.
     """
     emit_call("plan_mode", {"task": task, "steps": steps, "directory": directory})
 
@@ -164,36 +198,38 @@ async def plan_mode(task: str, steps: list[str], directory: str = ".") -> str:
 
     workspace_dir = Path(directory).expanduser().resolve()
 
+    from .todo_tools import _load_store, _save_store, _format_todos
+
+    existing_store = _load_store()
+    existing_todos = existing_store.get("todos", [])
+
     try:
         from ..agent import create_agent
 
         planning_agent = create_agent(system_prompt_addition=f"\n\n{_PLAN_MODE_SYSTEM_PROMPT}")
-        planning_prompt = "\n\n".join(
-            [
-                f"Working directory for planning: {workspace_dir}",
-                f"Requirements:\n{task.strip()}",
-                "Planning considerations:\n" + "\n".join(f"- {step}" for step in normalized_steps),
-            ]
-        )
+
+        prompt_parts = [
+            f"Working directory for planning: {workspace_dir}",
+            f"Requirements:\n{task.strip()}",
+            "Planning considerations:\n" + "\n".join(f"- {step}" for step in normalized_steps),
+        ]
+        if existing_todos:
+            prompt_parts.append(
+                "## Existing session todos (preserve completed tasks):\n\n"
+                + _format_todos(existing_todos)
+            )
+
+        planning_prompt = "\n\n".join(prompt_parts)
         response = await planning_agent.run(planning_prompt, usage_limits=_UNLIMITED)
         plan_text = response.output
 
-        workspace_dir.mkdir(parents=True, exist_ok=True)
-        todo_file = workspace_dir / "TODO.md"
-        header = [
-            f"# Plan: {task.strip()}",
-            "",
-            f"Generated: {datetime.now(timezone.utc).isoformat()}",
-            f"Workspace: {workspace_dir}",
-            "",
-            "## Requested Steps",
-            *(f"- {step}" for step in normalized_steps),
-            "",
-            "## Planning Output",
-            "",
-        ]
-        todo_file.write_text("\n".join(header) + plan_text.strip() + "\n", encoding="utf-8")
-        result = f"Plan written to {todo_file}\n\n{plan_text}"
+        parsed_todos = _parse_checklist(plan_text)
+        if parsed_todos:
+            existing_store["todos"] = parsed_todos
+            _save_store(existing_store)
+
+        todo_summary = _format_todos(existing_store["todos"]) if existing_store["todos"] else "(no checklist items found)"
+        result = f"{plan_text}\n\n--- Session todos ---\n{todo_summary}"
     except Exception as e:
         result = f"Error running planning agent: {e}"
 

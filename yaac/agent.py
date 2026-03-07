@@ -18,6 +18,8 @@ from .tools import (
     lsp_diagnostics,
     ensure_plan_mode_profile,
     lsp_query,
+    todo_read,
+    todo_write,
 )
 from .skills import init_skills, build_catalog, activate_skill, list_skill_names
 
@@ -41,6 +43,7 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - **Use plan mode for very complex tasks**: If a task is large, ambiguous, or requires thorough thinking before implementation, call `plan_mode` early to delegate to the dedicated read-only planning agent.
 - **Look for planning context**: If the user provides an existing plan or planning artifact, read it and use it as context before starting work.
 - **Keep plans actionable**: Plans should be concrete, ordered, and directly tied to execution.
+- **Track progress with todos**: Use `todo_write` to create and update tasks for the current session. After completing a task, immediately mark it as `completed` via `todo_write`. Use `todo_read` at the start of work to see what's already been done and skip it. Todos are stored per-session in `.yaac/todos/` so parallel sessions never conflict. When all tasks are completed the todo file is automatically cleaned up.
 
 ## Tool usage
 
@@ -56,6 +59,8 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - `create_skill` — Persist a new skill to `.yaac/skills/` so it's available in all future sessions and discovered alongside other skill directories
 - `create_agent_profile` — Persist a new agent profile to `.yaac/agents/` for use with `spawn_subagent`
 - `plan_mode` — Delegate planning to a dedicated read-only planning agent
+- `todo_read` — Read all todos for the current session
+- `todo_write` — Create or update session-scoped todos (supports merge and replace modes)
 - `lsp_diagnostics` — Get real type errors and warnings from a language server after editing a file
 - `lsp_query` — Query the language server for hover info, go-to-definition, references, or document symbols
 
@@ -110,6 +115,8 @@ def create_agent(
         Tool(create_skill, max_retries=3),
         Tool(create_agent_profile, max_retries=3),
         Tool(plan_mode, max_retries=3),
+        Tool(todo_read, max_retries=3),
+        Tool(todo_write, max_retries=3),
         Tool(lsp_diagnostics, max_retries=3),
         Tool(lsp_query, max_retries=3),
     ]

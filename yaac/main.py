@@ -145,6 +145,9 @@ def _estimate_history_tokens(message_history: list) -> int:
 
 
 async def run_session(model: str, beast_context: str = "") -> None:
+    from .session import init_session
+    init_session()
+
     set_current_model(model)
     try:
         agent = create_agent(model, system_prompt_addition=beast_context)
