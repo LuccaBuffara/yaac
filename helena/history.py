@@ -104,8 +104,37 @@ def trim_history(messages: list) -> list:
     per-turn costs bounded.
     """
     if len(messages) > _MAX_HISTORY_MESSAGES:
-        return messages[-_MAX_HISTORY_MESSAGES:]
+        trimmed = messages[-_MAX_HISTORY_MESSAGES:]
+        return _drop_leading_orphan_tool_results(trimmed)
     return messages
+
+
+def _drop_leading_orphan_tool_results(messages: list) -> list:
+    """Remove leading ModelRequest messages that contain only ToolReturnParts.
+
+    When trim_history slices the history mid-turn, the first message(s) may
+    be tool-result messages whose corresponding tool-use blocks were dropped.
+    Sending those to the API causes a 400 error:
+      "unexpected tool_use_id found in tool_result blocks"
+
+    We advance past any such leading messages until the list starts with
+    either a UserPromptPart message or a ModelResponse.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    idx = 0
+    while idx < len(messages):
+        msg = messages[idx]
+        if not isinstance(msg, ModelRequest):
+            # ModelResponse at the start is also invalid, keep scanning
+            idx += 1
+            continue
+        has_user_prompt = any(isinstance(p, UserPromptPart) for p in msg.parts)
+        if has_user_prompt:
+            break  # this is a proper user turn, safe to start here
+        # Only tool results (no user prompt) — orphaned, skip it
+        idx += 1
+    return messages[idx:]
 
 
 def _messages_to_text(messages: list) -> str:
@@ -152,7 +181,7 @@ async def compact_history(messages: list, model_name: str) -> list:
         return messages
 
     to_summarize = messages[:-keep_recent]
-    to_keep = messages[-keep_recent:]
+    to_keep = _drop_leading_orphan_tool_results(messages[-keep_recent:])
 
     conversation_text = _messages_to_text(to_summarize)
     if not conversation_text.strip():
