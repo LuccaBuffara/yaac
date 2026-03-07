@@ -1,10 +1,26 @@
 # YAAC (Yet Another Agentic Coder)
 
-An AI-powered coding assistant CLI, built with [Pydantic AI](https://ai.pydantic.dev/) and Claude.
+An AI-powered coding assistant CLI, built with [Pydantic AI](https://ai.pydantic.dev/).
 
-Inspired by Claude Code — runs in your terminal, reads and edits your files, executes commands.
+Runs in your terminal, reads and edits your files, executes commands — like Claude Code, but model-agnostic and fully open.
 
-## Install
+---
+
+## Features
+
+- 🤖 **Multi-provider** — Anthropic, OpenAI, Google Gemini, Groq, Mistral, Ollama
+- 🛠 **Full tool suite** — read/write/edit files, run shell commands, search code, LSP diagnostics
+- 🧠 **Subagents & planning** — spawn independent subagents, delegate planning to a read-only planner
+- 📚 **Skills system** — persistent, reusable instructions discoverable by the agent
+- ✅ **Session todos** — per-session task tracking so the agent never loses context mid-task
+- 💬 **Persistent history** — conversations saved to `.yaac/history.json`, compacted automatically
+- 🔍 **LSP integration** — real type errors and code intelligence (hover, go-to-definition, references)
+- ⚡ **Streaming output** — text streams in real-time; tool calls shown inline
+- 🛑 **Interrupt & refine** — press `i` during a run to interrupt and add more details
+
+---
+
+## Installation
 
 ### Global install from GitHub
 
@@ -12,82 +28,211 @@ Inspired by Claude Code — runs in your terminal, reads and edits your files, e
 pip install "git+https://github.com/<your-org>/yaac.git"
 ```
 
-This installs the global `yaac` command in one line.
-
-### Global update
+### Update
 
 ```bash
 pip install --upgrade --force-reinstall "git+https://github.com/<your-org>/yaac.git"
 ```
 
-### Local editable install for development
+### Local / development install
 
 ```bash
 pip install -e .
+
+# With optional provider support
+pip install -e ".[openai]"     # OpenAI
+pip install -e ".[google]"     # Google Gemini
+pip install -e ".[groq]"       # Groq
+pip install -e ".[mistral]"    # Mistral
+pip install -e ".[all]"        # All providers
+
+# With dev dependencies
+pip install -e ".[dev]"
 ```
 
 ### Configure and run
 
 ```bash
-# Set your Anthropic API key
+# Set your API key (Anthropic is the default provider)
 export ANTHROPIC_API_KEY=sk-ant-...
 
-# Run
+# Launch
 yaac
+
+# Use a specific model
+yaac --model openai:gpt-4o
+yaac --model google:gemini-2.0-flash
+yaac --model groq:llama-4-scout
+yaac --model ollama:llama3
 ```
+
+---
 
 ## Usage
 
 Just type your request at the `>` prompt:
 
 ```
-> read the main.py file and explain what it does
+> read main.py and explain what it does
 > add error handling to the parse_input function
 > run the tests and fix any failures
-> create a new utils.py file with helper functions for...
+> refactor the auth module to use async/await
 ```
 
-### Commands
+### Built-in commands
 
 | Command | Description |
 |---------|-------------|
-| `exit` / `quit` | Quit YAAC |
+| `exit` / `quit` / `bye` | Quit YAAC |
 | `/clear` | Clear conversation history |
 | `/help` | Show help |
+| `/skills` | List loaded skills |
+| `/model` | Open interactive model picker |
+| `/model <provider:model>` | Switch model (e.g. `openai:gpt-4o`) |
+| `/key` | Show API key status for current provider |
+| `/key <value>` | Set & save the API key for the current provider |
 
-### Environment Variables
+### Interrupt & refine
+
+Press **`i`** while YAAC is running to interrupt the current turn. You'll be prompted to add extra details; pressing Enter continues with the original instruction.
+
+### Environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | **Required.** Your Anthropic API key |
-| `YAAC_MODEL` | Claude model to use (default: `claude-sonnet-4-6`) |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `GOOGLE_API_KEY` | Google Gemini API key |
+| `GROQ_API_KEY` | Groq API key |
+| `MISTRAL_API_KEY` | Mistral API key |
+| `YAAC_MODEL` | Default model (overrides `~/.yaac/config.json`) |
 | `YAAC_DEBUG` | Set to `1` for full error tracebacks |
 
-## Tools Available to YAAC
+API keys and the default model are also persisted in `~/.yaac/config.json` when set via `/key` or `/model`.
 
+---
+
+## Supported models
+
+Use the format `provider:model-id` anywhere a model is expected.
+
+| Provider | Example model IDs |
+|----------|-------------------|
+| `anthropic` | `claude-sonnet-4-6`, `claude-opus-4`, `claude-haiku-4` |
+| `openai` | `gpt-4o`, `gpt-4.1`, `o3`, `o4-mini` |
+| `google` | `gemini-2.0-flash`, `gemini-1.5-pro` |
+| `groq` | `llama-4-scout`, `llama-3.3-70b`, `kimi-k2` |
+| `mistral` | `mistral-large`, `mistral-small` |
+| `ollama` | any locally running model, e.g. `llama3`, `mistral` |
+
+---
+
+## Tools available to the agent
+
+### File tools
 | Tool | Description |
 |------|-------------|
-| `read_file` | Read file contents with line numbers |
-| `write_file` | Create or overwrite a file |
-| `edit_file` | Replace an exact string in a file |
-| `list_directory` | List directory contents |
-| `run_bash` | Execute shell commands |
+| `read_file` | Read file contents with line numbers (supports offset/limit) |
+| `write_file` | Create a new file |
+| `update_file` | Apply a unified diff to an existing file |
+| `list_directory` | List directory contents with sizes |
+
+### Shell & search
+| Tool | Description |
+|------|-------------|
+| `run_bash` | Execute shell commands (tests, git, build, etc.) |
 | `glob_search` | Find files by glob pattern |
 | `grep_search` | Search file contents by regex |
-| `plan_mode` | Delegate planning to a dedicated read-only planning agent |
+
+### LSP & code intelligence
+| Tool | Description |
+|------|-------------|
+| `lsp_diagnostics` | Get real type errors and warnings from a language server |
+| `lsp_query` | Hover info, go-to-definition, references, document symbols |
+
+### Agent & planning
+| Tool | Description |
+|------|-------------|
+| `plan_mode` | Delegate planning to a dedicated read-only planning subagent |
+| `spawn_subagent` | Spawn an independent subagent with a fresh context |
+| `create_skill` | Persist a new reusable skill to `~/.yaac/skills/` |
+| `create_agent_profile` | Persist a new agent profile to `~/.yaac/agents/` |
+
+### Session management
+| Tool | Description |
+|------|-------------|
+| `todo_read` | Read all todos for the current session |
+| `todo_write` | Create or update session-scoped todos |
+
+---
+
+## Skills
+
+Skills are persistent, reusable instruction sets discovered automatically. Place a `SKILL.md` file with YAML frontmatter in any of these locations:
+
+```
+<project>/.yaac/skills/<skill-name>/SKILL.md   ← project-level (highest priority)
+~/.yaac/skills/<skill-name>/SKILL.md           ← user-level (global)
+```
+
+**`SKILL.md` format:**
+
+```markdown
+---
+name: my-skill
+description: One-line description shown in the catalog.
+---
+
+Full instructions in Markdown...
+```
+
+The agent sees only the name and description at startup. Full instructions are loaded on-demand via the `activate_skill` tool when a task matches. Use `/skills` to list all loaded skills, or `create_skill` to let the agent create one automatically.
+
+---
+
+## Conversation history & context management
+
+- History is persisted to `.yaac/history.json` in the working directory.
+- Tool results are truncated automatically to avoid bloating the context.
+- When input token usage exceeds **65 %** of the model's context window, history is compacted automatically.
+- Use `/clear` to reset the conversation entirely.
+
+---
 
 ## Development
 
 ```bash
-# Install in editable mode with dev dependencies
 pip install -e ".[dev]"
 
-# Run directly without installing
+# Run without installing
 python -m yaac.main
 ```
 
-## Planning behavior
+---
 
-- For very complex tasks, YAAC should call `plan_mode` first to delegate exploration and implementation planning to a dedicated read-only subagent.
-- The planning agent must stay read-only: it may inspect the codebase and propose a plan, but it must not create, edit, or delete files.
-- The planning response should include actionable implementation steps and the most critical files for carrying out the work.
+## Architecture
+
+```
+yaac/
+├── main.py          # CLI entry point, REPL loop, streaming output
+├── agent.py         # Pydantic AI agent creation & system prompt
+├── config.py        # Model resolution, pricing, API key management
+├── skills.py        # Skill discovery, catalog & activation
+├── history.py       # Conversation persistence & compaction
+├── completer.py     # Tab-completion, model picker, toolbar
+├── ui.py            # Rich console helpers
+├── beast.py         # Beast mode (extended context features)
+├── tools/
+│   ├── file_tools.py    # read_file, write_file, update_file, list_directory
+│   ├── shell_tools.py   # run_bash
+│   ├── search_tools.py  # glob_search, grep_search
+│   ├── lsp_tools.py     # lsp_diagnostics, lsp_query
+│   ├── meta_tools.py    # plan_mode, create_skill, create_agent_profile
+│   ├── subagent_tools.py # spawn_subagent
+│   └── todo_tools.py    # todo_read, todo_write
+└── lsp/             # LSP server management
+```
+
+## License
+
+MIT
