@@ -4,6 +4,7 @@ import os
 import sys
 import asyncio
 import time
+import threading
 from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit import PromptSession
@@ -35,6 +36,100 @@ from .completer import build_completer, get_toolbar, run_model_picker, set_toolb
 PROMPT_HISTORY_FILE = os.path.expanduser("~/.yaac_prompt_history")
 
 PROMPT_STYLE = Style.from_dict({"prompt": "ansicyan bold"})
+
+
+class _InterruptMonitor:
+    def __init__(self) -> None:
+        self._stop = threading.Event()
+        self._triggered = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._fd: int | None = None
+        self._old_settings: list[Any] | None = None
+
+    def start(self) -> None:
+        if os.name == "nt":
+            self._thread = threading.Thread(target=self._run_windows, daemon=True)
+            self._thread.start()
+            return
+
+        try:
+            import termios
+            import tty
+
+            fd = sys.stdin.fileno()
+            if not os.isatty(fd):
+                return
+            old_settings = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+            self._fd = fd
+            self._old_settings = old_settings
+        except Exception:
+            return
+
+        self._thread = threading.Thread(target=self._run_posix, daemon=True)
+        self._thread.start()
+
+    def triggered(self) -> bool:
+        return self._triggered.is_set()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=0.2)
+
+        if self._fd is not None and self._old_settings is not None:
+            try:
+                import termios
+
+                termios.tcsetattr(self._fd, termios.TCSADRAIN, self._old_settings)
+            except Exception:
+                pass
+
+    def _run_posix(self) -> None:
+        import select
+
+        while not self._stop.is_set():
+            try:
+                ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if not ready:
+                    continue
+                ch = sys.stdin.read(1)
+            except Exception:
+                return
+            if ch.lower() == "i":
+                self._triggered.set()
+                return
+
+    def _run_windows(self) -> None:
+        try:
+            import msvcrt
+        except Exception:
+            return
+
+        while not self._stop.is_set():
+            try:
+                if not msvcrt.kbhit():
+                    self._stop.wait(0.1)
+                    continue
+                ch = msvcrt.getwch()
+            except Exception:
+                return
+            if ch.lower() == "i":
+                self._triggered.set()
+                return
+
+
+async def _read_followup_instruction(session: PromptSession, previous_instruction: str) -> str:
+    console.print("\n[dim]Interrupted. Press Enter to keep the last instruction and add details.[/dim]")
+    try:
+        extra = await session.prompt_async([("class:prompt", "↩ details> ")])
+    except (EOFError, KeyboardInterrupt):
+        return ""
+
+    extra = extra.strip()
+    if not extra:
+        return previous_instruction
+    return f"{previous_instruction}\n\nAdditional user details:\n{extra}"
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage
@@ -195,40 +290,28 @@ async def run_session(model: str, beast_context: str = "") -> None:
                 print_error("No agent — use [cyan]/model <id>[/cyan] to reconfigure.")
             continue
 
-        try:
-            console.print()
-            await _run_turn(agent, user_input, message_history, model, session_cost, session_tokens)
-        except KeyboardInterrupt:
-            console.print("\n[dim]Interrupted.[/dim]")
+        pending_input = user_input
+        while pending_input:
             try:
-                new_instr = input("  ↩  New instruction (or Enter to cancel): ").strip()
-            except (EOFError, KeyboardInterrupt):
-                new_instr = ""
-            if new_instr:
-                try:
-                    console.print()
-                    combined = (
-                        f"You were working on the following task but were interrupted:\n{user_input}\n\n"
-                        f"New instruction from user:\n{new_instr}"
-                    )
-                    await _run_turn(agent, combined, message_history, model, session_cost, session_tokens)
-                except KeyboardInterrupt:
-                    console.print("\n[dim]Interrupted.[/dim]")
-                except Exception as e:
-                    print_error(str(e))
-        except Exception as e:
-            err_str = str(e)
-            # Detect missing / invalid API key errors from any provider
-            auth_hints = ("api key", "apikey", "api_key", "authentication", "401", "unauthorized", "permission")
-            if any(h in err_str.lower() for h in auth_hints):
-                _, missing_key = check_api_key(model)
-                env_hint = f"  Set it with: [cyan]/key <your-api-key>[/cyan]" if missing_key else ""
-                print_error(f"Authentication failed — check your API key.\n{env_hint}")
-            else:
-                print_error(err_str)
-            if os.environ.get("YAAC_DEBUG"):
-                import traceback
-                traceback.print_exc()
+                console.print()
+                await _run_turn(agent, pending_input, message_history, model, session_cost, session_tokens)
+                pending_input = ""
+            except KeyboardInterrupt:
+                pending_input = await _read_followup_instruction(session, pending_input)
+            except Exception as e:
+                err_str = str(e)
+                # Detect missing / invalid API key errors from any provider
+                auth_hints = ("api key", "apikey", "api_key", "authentication", "401", "unauthorized", "permission")
+                if any(h in err_str.lower() for h in auth_hints):
+                    _, missing_key = check_api_key(model)
+                    env_hint = f"  Set it with: [cyan]/key <your-api-key>[/cyan]" if missing_key else ""
+                    print_error(f"Authentication failed — check your API key.\n{env_hint}")
+                else:
+                    print_error(err_str)
+                if os.environ.get("YAAC_DEBUG"):
+                    import traceback
+                    traceback.print_exc()
+                pending_input = ""
 
 
 async def _run_turn(agent: Any, user_input: str, message_history: list, model: str = "", session_cost: list[float] | None = None, session_tokens: list[int] | None = None) -> None:
@@ -236,7 +319,7 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
     from pydantic_ai import Agent as _PydanticAgent
 
     start_time = time.monotonic()
-    spinner: HaloType = _Halo(text="thinking...", spinner="dots2", stream=sys.stdout)
+    spinner: HaloType = _Halo(text="thinking...", spinner="dots", stream=sys.stdout)
     spinner.start()
     streaming_active = False
 
@@ -270,15 +353,21 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
     token = set_handler(_on_tool_event)
     usage = None
     run = None
+    interrupt_monitor = _InterruptMonitor()
     try:
+        interrupt_monitor.start()
         prepared = prune_old_tool_results(trim_history(trim_tool_results(message_history)))
         async with agent.iter(user_input, message_history=prepared, usage_limits=_UNLIMITED) as run:
             async for node in run:
+                if interrupt_monitor.triggered():
+                    raise KeyboardInterrupt
                 if _PydanticAgent.is_model_request_node(node):
                     turn_text = ""
                     _stream_cm = cast(Any, node.stream(run.ctx))
                     async with _stream_cm as stream:
                         async for event in cast(Any, stream):
+                            if interrupt_monitor.triggered():
+                                raise KeyboardInterrupt
                             if isinstance(event, PartStartEvent) and isinstance(event.part, ToolCallPart):
                                 # Model finished text and started generating tool-call args.
                                 # Show which tool is being built so the terminal never looks frozen.
@@ -332,6 +421,7 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
         spinner.fail(f"failed  {elapsed:.1f}s")
         raise
     finally:
+        interrupt_monitor.stop()
         reset_handler(token)
 
     elapsed_total = time.monotonic() - start_time
@@ -406,6 +496,7 @@ def _print_help(skills: list[str]) -> None:
         "  [cyan]/model <id>[/cyan]     Switch model directly (e.g. [dim]openai:gpt-4o[/dim])\n"
         "  [cyan]/key[/cyan]            Show API key status for the current provider\n"
         "  [cyan]/key <value>[/cyan]    Set & save the API key for the current provider\n"
+        "  [cyan]i[/cyan]               Interrupt the current run and add more details\n"
         "  [cyan]/help[/cyan]           Show this help\n"
         "  [cyan]exit[/cyan]            Quit\n\n"
         "Model format: [yellow]provider:model-id[/yellow]\n"
