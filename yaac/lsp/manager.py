@@ -1,4 +1,4 @@
-"""Session-level LSP client manager for Helena Code.
+"""Session-level LSP client manager for YAAC.
 
 Maintains one LSPClient per (server_id, root) pair. Clients are started
 lazily on first file access and shut down together at session end.

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "helena-code"
+name = "yaac"
 version = "0.1.0"
-description = "Helena Code - An AI coding assistant powered by Pydantic AI"
+description = "YAAC (Yet Another Agentic Coder) - An AI coding assistant powered by Pydantic AI"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic-ai[anthropic]>=0.0.20",
@@ -24,7 +24,7 @@ ollama   = ["pydantic-ai[openai]>=0.0.20"]
 all      = ["pydantic-ai[openai,google,groq,mistral]>=0.0.20"]
 
 [project.scripts]
-helena = "helena.main:main"
+yaac = "yaac.main:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["helena"]
+packages = ["yaac"]

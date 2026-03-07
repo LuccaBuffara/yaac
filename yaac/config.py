@@ -1,4 +1,4 @@
-"""Model configuration for Helena Code."""
+"""Model configuration for YAAC."""
 
 import json
 import os
@@ -129,7 +129,7 @@ def calculate_cost(model_str: str, input_tokens: int, output_tokens: int) -> flo
 
 def load_default_model() -> str:
     """Return the configured default model (env var > config file > built-in default)."""
-    if env := os.environ.get("HELENA_MODEL"):
+    if env := os.environ.get("YAAC_MODEL"):
         return env
     if CONFIG_PATH.exists():
         try:
@@ -208,7 +208,7 @@ def resolve_model(model_str: str):
         except ImportError:
             raise ImportError("Install OpenAI support: pip install 'pydantic-ai[openai]'")
         client = AsyncOpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-        return OpenAIModel(model_id, openai_client=client)
+        return OpenAIModel(model_id, provider=client)  # type: ignore[call-overload]
 
     supported = ", ".join(PROVIDER_ENV_KEYS)
     raise ValueError(f"Unknown provider '{provider}'. Supported: {supported}")

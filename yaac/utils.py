@@ -1,4 +1,4 @@
-"""Shared utilities for Helena Code."""
+"""Shared utilities for YAAC."""
 
 import asyncio
 from typing import Any, Callable, TypeVar

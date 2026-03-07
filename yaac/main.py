@@ -1,4 +1,4 @@
-"""Helena Code - Main CLI entry point."""
+"""YAAC (Yet Another Agentic Coder) - Main CLI entry point."""
 
 import os
 import sys
@@ -32,7 +32,7 @@ from .tool_events import set_handler, reset_handler
 from .ui import console, print_welcome, print_beast_followup_banner, print_error, print_info
 from .completer import build_completer, get_toolbar, run_model_picker, set_toolbar_stats
 
-PROMPT_HISTORY_FILE = os.path.expanduser("~/.helena_prompt_history")
+PROMPT_HISTORY_FILE = os.path.expanduser("~/.yaac_prompt_history")
 
 PROMPT_STYLE = Style.from_dict({"prompt": "ansicyan bold"})
 
@@ -226,7 +226,7 @@ async def run_session(model: str, beast_context: str = "") -> None:
                 print_error(f"Authentication failed — check your API key.\n{env_hint}")
             else:
                 print_error(err_str)
-            if os.environ.get("HELENA_DEBUG"):
+            if os.environ.get("YAAC_DEBUG"):
                 import traceback
                 traceback.print_exc()
 
@@ -399,7 +399,7 @@ def _print_skills(skills: list[str]) -> None:
 
 def _print_help(skills: list[str]) -> None:
     console.print(
-        "\n[bold cyan]Helena Code[/bold cyan] — Commands:\n"
+        "\n[bold cyan]YAAC[/bold cyan] — Commands:\n"
         "  [cyan]/clear[/cyan]          Clear conversation history\n"
         "  [cyan]/skills[/cyan]         List loaded skills\n"
         "  [cyan]/model[/cyan]          Open interactive provider/model picker\n"
@@ -412,8 +412,8 @@ def _print_help(skills: list[str]) -> None:
         "  Providers: [yellow]anthropic, openai, google, groq, mistral, ollama[/yellow]\n\n"
         "Config file: [yellow]~/.helena/config.json[/yellow]  "
         "(keys and default model are persisted here)\n"
-        "Env var override: [yellow]HELENA_MODEL[/yellow]\n"
-        "Set [yellow]HELENA_DEBUG=1[/yellow] for full error tracebacks.\n"
+        "Env var override: [yellow]YAAC_MODEL[/yellow]\n"
+        "Set [yellow]YAAC_DEBUG=1[/yellow] for full error tracebacks.\n"
     )
 
 
@@ -421,8 +421,8 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="helena",
-        description="Helena Code — AI Coding Assistant",
+        prog="yaac",
+        description="YAAC (Yet Another Agentic Coder) — AI Coding Assistant",
         add_help=True,
     )
     parser.add_argument(
@@ -440,7 +440,7 @@ def main() -> None:
         help=(
             "Model to use, as provider:model-id "
             "(e.g. anthropic:claude-sonnet-4-6, openai:gpt-4o, google:gemini-2.0-flash). "
-            "Defaults to HELENA_MODEL env var or ~/.helena/config.json."
+            "Defaults to YAAC_MODEL env var or ~/.helena/config.json."
         ),
     )
     args = parser.parse_args()

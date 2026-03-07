@@ -1,4 +1,4 @@
-"""Shell execution tools for Helena Code."""
+"""Shell execution tools for YAAC."""
 
 import asyncio
 

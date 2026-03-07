@@ -1,4 +1,4 @@
-"""Beast Mode - Multi-agent parallel execution for Helena Code."""
+"""Beast Mode - Multi-agent parallel execution for YAAC."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ class Plan(BaseModel):
 # ---------------------------------------------------------------------------
 
 _CLARIFICATION_SYSTEM = """\
-You are the Beast Mode Orchestrator for Helena Code, a multi-agent coding assistant.
+You are the Beast Mode Orchestrator for YAAC, a multi-agent coding assistant.
 
 You have just received a task. Before decomposing it into parallel subtasks, decide
 whether you need clarification to do the job well.
@@ -118,7 +118,7 @@ Return an empty questions list to proceed without asking anything.
 """
 
 _RESEARCHER_SYSTEM = """\
-You are a file search specialist for Beast Mode in Helena Code.
+You are a file search specialist for Beast Mode in YAAC.
 Your ONLY job is to explore files in the working directory and return a findings report.
 
 === SCOPE: FILES ONLY ===
@@ -143,7 +143,7 @@ Return a concise findings report covering:
 """
 
 _ORCHESTRATOR_SYSTEM = """\
-You are the Beast Mode Orchestrator for Helena Code, a multi-agent coding assistant.
+You are the Beast Mode Orchestrator for YAAC, a multi-agent coding assistant.
 
 A researcher has already explored the codebase and provided findings below.
 Your ONLY job is to decompose the task into a parallel execution plan.
@@ -159,7 +159,7 @@ Rules:
 """
 
 _SYNTHESIS_SYSTEM = """\
-You are the Beast Mode Synthesis Agent for Helena Code.
+You are the Beast Mode Synthesis Agent for YAAC.
 
 Multiple parallel coding agents have completed their assigned subtasks. Your job:
 1. Summarize what was accomplished across all agents.
@@ -191,7 +191,7 @@ def _render_dashboard(
     # Orchestrator row
     orch_selected = (selected_id == 0)
     if phase == "planning":
-        orch_icon: object = Spinner("dots").render(time.monotonic())
+        orch_icon = Spinner("dots").render(time.monotonic())
         orch_style = "bold yellow"
     elif phase == "done":
         orch_icon = Text("✓", style="bold green")
@@ -201,7 +201,7 @@ def _render_dashboard(
         orch_style = "bold cyan"
 
     if orch_selected:
-        orch_label: object = Text(" Orchestrator ", style="bold white on dark_orange")
+        orch_label = Text(" Orchestrator ", style="bold white on dark_orange")
     else:
         orch_label = Text("Orchestrator", style=orch_style)
 
@@ -221,7 +221,7 @@ def _render_dashboard(
         selected = (w.id == selected_id)
 
         if w.status == TaskStatus.RUNNING:
-            icon: object = Spinner("dots2").render(time.monotonic())
+            icon = Spinner("dots2").render(time.monotonic())
         else:
             icon = Text(_STATUS_ICON[st], style=_STATUS_STYLE[st])
 
@@ -635,7 +635,7 @@ async def _handle_interrupts(
 # ---------------------------------------------------------------------------
 
 async def run_beast_mode(task: str, model_name: str) -> str:
-    """Run Helena Code in Beast Mode — orchestrate multiple parallel agents."""
+    """Run YAAC in Beast Mode — orchestrate multiple parallel agents."""
     from rich.console import Group as RGroup
     from rich.markdown import Markdown
 

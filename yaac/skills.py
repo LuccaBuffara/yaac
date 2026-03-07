@@ -1,4 +1,4 @@
-"""Agent Skills implementation for Helena Code.
+"""Agent Skills implementation for YAAC.
 
 Follows the agentskills.io open format:
 - Discovery: scan for SKILL.md files with YAML frontmatter

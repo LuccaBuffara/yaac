@@ -1,4 +1,4 @@
-"""LSP-powered code intelligence tools for Helena Code."""
+"""LSP-powered code intelligence tools for YAAC."""
 
 from pathlib import Path
 

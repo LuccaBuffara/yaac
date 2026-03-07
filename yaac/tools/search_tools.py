@@ -1,4 +1,4 @@
-"""Search tools for Helena Code."""
+"""Search tools for YAAC."""
 
 import asyncio
 import fnmatch

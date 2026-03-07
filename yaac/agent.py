@@ -1,4 +1,4 @@
-"""Helena Code AI agent powered by Pydantic AI."""
+"""YAAC (Yet Another Agentic Coder) AI agent powered by Pydantic AI."""
 
 from pydantic_ai import Agent, Tool
 
@@ -19,7 +19,7 @@ from .tools import (
 )
 from .skills import init_skills, build_catalog, activate_skill, list_skill_names
 
-SYSTEM_PROMPT = """You are Helena Code, an expert AI coding assistant that helps with software engineering tasks.
+SYSTEM_PROMPT = """You are YAAC (Yet Another Agentic Coder), an expert AI coding assistant that helps with software engineering tasks.
 
 You have access to tools to read, write, and edit files, run shell commands, and search the codebase.
 
@@ -71,7 +71,7 @@ Use `lsp_query` to understand code structure:
 
 ## Working directory
 
-Your working directory is the directory from which Helena Code was launched.
+Your working directory is the directory from which YAAC was launched.
 Use absolute paths when in doubt.
 
 **Before asking the user about file locations, project structure, or where things are:**
@@ -85,7 +85,7 @@ def create_agent(
     model_name: str | None = None,
     system_prompt_addition: str = "",
 ) -> Agent:
-    """Create and configure the Helena Code agent."""
+    """Create and configure the YAAC agent."""
     init_skills()
 
     model = resolve_model(model_name or get_current_model())

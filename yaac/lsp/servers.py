@@ -1,4 +1,4 @@
-"""LSP server definitions for Helena Code."""
+"""LSP server definitions for YAAC."""
 
 import os
 import sys

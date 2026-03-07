@@ -1,4 +1,4 @@
-"""Subagent spawning tool for Helena Code."""
+"""Subagent spawning tool for YAAC."""
 
 from pathlib import Path
 

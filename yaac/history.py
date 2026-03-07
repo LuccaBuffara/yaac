@@ -1,4 +1,4 @@
-"""Conversation history persistence for Helena Code.
+"""Conversation history persistence for YAAC.
 
 Saves and loads the full message history to .helena/history.json in the
 working directory, so conversations persist across sessions.
@@ -39,7 +39,7 @@ def trim_tool_results(messages: list) -> list:
         if not isinstance(msg, ModelRequest):
             out.append(msg)
             continue
-        new_parts = []
+        new_parts = list(msg.parts)
         changed = False
         for part in msg.parts:
             if (
@@ -54,7 +54,7 @@ def trim_tool_results(messages: list) -> list:
                 new_parts.append(replace(part, content=truncated))
                 changed = True
             else:
-                new_parts.append(part)
+                pass
         out.append(replace(msg, parts=new_parts) if changed else msg)
     return out
 
@@ -79,7 +79,7 @@ def prune_old_tool_results(messages: list, keep_recent: int = _PRUNE_OLD_AFTER) 
         if not isinstance(msg, ModelRequest):
             pruned_old.append(msg)
             continue
-        new_parts = []
+        new_parts = list(msg.parts)
         changed = False
         for part in msg.parts:
             if (
@@ -90,7 +90,7 @@ def prune_old_tool_results(messages: list, keep_recent: int = _PRUNE_OLD_AFTER) 
                 new_parts.append(replace(part, content="[output omitted]"))
                 changed = True
             else:
-                new_parts.append(part)
+                pass
         pruned_old.append(replace(msg, parts=new_parts) if changed else msg)
 
     return pruned_old + recent_messages
@@ -147,18 +147,20 @@ def _messages_to_text(messages: list) -> str:
     lines = []
     for msg in messages:
         if isinstance(msg, ModelRequest):
-            for part in msg.parts:
+            request_parts = list(msg.parts)
+            for part in request_parts:
                 if isinstance(part, UserPromptPart):
                     content = part.content if isinstance(part.content, str) else str(part.content)
                     lines.append(f"User: {content[:600]}")
                 elif isinstance(part, ToolReturnPart):
                     lines.append(f"  [tool_result:{part.tool_name}]: {str(part.content)[:200]}")
         elif isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if isinstance(part, TextPart):
-                    lines.append(f"Assistant: {part.content[:600]}")
-                elif isinstance(part, ToolCallPart):
-                    lines.append(f"  [tool_call:{part.tool_name}({str(part.args)[:150]})]")
+            response_parts = list(msg.parts)
+            for response_part in response_parts:
+                if isinstance(response_part, TextPart):
+                    lines.append(f"Assistant: {response_part.content[:600]}")
+                elif isinstance(response_part, ToolCallPart):
+                    lines.append(f"  [tool_call:{response_part.tool_name}({str(response_part.args)[:150]})]")
     return "\n".join(lines)
 
 

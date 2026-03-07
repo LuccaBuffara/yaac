@@ -1,4 +1,4 @@
-"""Terminal UI utilities for Helena Code."""
+"""Terminal UI utilities for YAAC."""
 
 from rich.console import Console, Group
 from rich.columns import Columns
@@ -57,8 +57,8 @@ def _gradient_art(art: str, colors: list[str]) -> Text:
 
 def print_welcome() -> None:
     wordmark = Text.assemble(
-        ("Helena", "bold #00BFFF"),
-        (" Code", "bold #7B61FF"),
+        ("YAAC", "bold #00BFFF"),
+        ("  ·  Yet Another Agentic Coder", "bold #7B61FF"),
         ("  ·  ", "dim #333366"),
         ("AI Coding Agent", "dim white"),
     )

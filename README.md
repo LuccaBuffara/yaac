@@ -1,4 +1,4 @@
-# Helena Code
+# YAAC (Yet Another Agentic Coder)
 
 An AI-powered coding assistant CLI, built with [Pydantic AI](https://ai.pydantic.dev/) and Claude.
 
@@ -14,7 +14,7 @@ pip install -e .
 export ANTHROPIC_API_KEY=sk-ant-...
 
 # Run
-helena
+yaac
 ```
 
 ## Usage
@@ -32,7 +32,7 @@ Just type your request at the `>` prompt:
 
 | Command | Description |
 |---------|-------------|
-| `exit` / `quit` | Quit Helena Code |
+| `exit` / `quit` | Quit YAAC |
 | `/clear` | Clear conversation history |
 | `/help` | Show help |
 
@@ -41,10 +41,10 @@ Just type your request at the `>` prompt:
 | Variable | Description |
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | **Required.** Your Anthropic API key |
-| `HELENA_MODEL` | Claude model to use (default: `claude-sonnet-4-6`) |
-| `HELENA_DEBUG` | Set to `1` for full error tracebacks |
+| `YAAC_MODEL` | Claude model to use (default: `claude-sonnet-4-6`) |
+| `YAAC_DEBUG` | Set to `1` for full error tracebacks |
 
-## Tools Available to Helena
+## Tools Available to YAAC
 
 | Tool | Description |
 |------|-------------|

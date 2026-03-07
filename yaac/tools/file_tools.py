@@ -1,4 +1,4 @@
-"""File operation tools for Helena Code."""
+"""File operation tools for YAAC."""
 
 import asyncio
 import re
@@ -265,7 +265,7 @@ def _list_directory_sync(path: str) -> str:
         return f"Error listing directory: {e}"
 
 
-def _format_size(size: int) -> str:
+def _format_size(size: int | float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if size < 1024:
             return f"{size:.0f}{unit}"

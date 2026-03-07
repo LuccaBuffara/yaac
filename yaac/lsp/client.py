@@ -1,4 +1,4 @@
-"""Single LSP server client for Helena Code."""
+"""Single LSP server client for YAAC."""
 
 import asyncio
 import os
@@ -92,6 +92,10 @@ class LSPClient:
                 stderr=asyncio.subprocess.DEVNULL,
             )
         except (FileNotFoundError, OSError):
+            return False
+
+        if self._proc.stdout is None or self._proc.stdin is None:
+            await self.shutdown()
             return False
 
         self._protocol = LSPProtocol(self._proc.stdout, self._proc.stdin)

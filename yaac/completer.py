@@ -1,4 +1,4 @@
-"""Command completion, toolbar hints, and interactive menus for Helena Code."""
+"""Command completion, toolbar hints, and interactive menus for YAAC."""
 
 from typing import Any
 
@@ -118,7 +118,7 @@ _PROVIDER_HINTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 def build_completer() -> NestedCompleter:
-    """Return a NestedCompleter covering all Helena slash commands and known model IDs."""
+    """Return a NestedCompleter covering all YAAC slash commands and known model IDs."""
     model_completions: dict[str, None] = {
         f"{provider}:{model}": None
         for provider, models in PROVIDER_MODELS.items()
@@ -185,7 +185,7 @@ def get_toolbar() -> HTML:
             "type <b>exit</b> to quit"
         )
     else:
-        left = "  <b>Helena Code</b>  ·  type a request or <b>/help</b> for commands"
+        left = "  <b>YAAC</b>  ·  type a request or <b>/help</b> for commands"
 
     if not _toolbar_stats:
         return HTML(left)
@@ -281,7 +281,7 @@ async def _select(
         )
     )
 
-    app = Application(
+    app: Any = Application(
         layout=layout,
         key_bindings=kb,
         full_screen=False,
