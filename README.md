@@ -4,12 +4,31 @@ An AI-powered coding assistant CLI, built with [Pydantic AI](https://ai.pydantic
 
 Inspired by Claude Code — runs in your terminal, reads and edits your files, executes commands.
 
-## Setup
+## Install
+
+### Global install from GitHub
 
 ```bash
-# Install
-pip install -e .
+pip install "git+https://github.com/<your-org>/yaac.git"
+```
 
+This installs the global `yaac` command in one line.
+
+### Global update
+
+```bash
+pip install --upgrade --force-reinstall "git+https://github.com/<your-org>/yaac.git"
+```
+
+### Local editable install for development
+
+```bash
+pip install -e .
+```
+
+### Configure and run
+
+```bash
 # Set your Anthropic API key
 export ANTHROPIC_API_KEY=sk-ant-...
 
