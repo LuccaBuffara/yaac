@@ -44,6 +44,41 @@ CONTEXT_WINDOWS: dict[str, int] = {
     "mistral-small": 32_000,
 }
 
+# Pricing per million tokens (input, output) in USD.
+# Matched by model substring, most-specific first.
+MODEL_PRICING: list[tuple[str, float, float]] = [
+    # Anthropic — https://platform.claude.com/docs/en/about-claude/pricing
+    ("claude-opus-4-6",       5.00,  25.00),
+    ("claude-opus-4-5",       5.00,  25.00),
+    ("claude-opus-4-1",      15.00,  75.00),
+    ("claude-opus-4",        15.00,  75.00),
+    ("claude-sonnet-4-6",     3.00,  15.00),
+    ("claude-sonnet-4-5",     3.00,  15.00),
+    ("claude-sonnet-4",       3.00,  15.00),
+    ("claude-haiku-4-5",      1.00,   5.00),
+    ("claude-haiku-4",        1.00,   5.00),
+    ("claude-haiku-3-5",      0.80,   4.00),
+    ("claude-haiku-3",        0.25,   1.25),
+    # OpenAI — https://openai.com/api/pricing
+    ("gpt-4o-mini",           0.15,   0.60),
+    ("gpt-4o",                2.50,  10.00),
+    ("gpt-4-turbo",          10.00,  30.00),
+    ("o3-mini",               1.10,   4.40),
+    ("o3",                   10.00,  40.00),
+    ("o1-mini",               1.10,   4.40),
+    ("o1",                   15.00,  60.00),
+    # Google — https://ai.google.dev/pricing
+    ("gemini-2.0-flash",      0.10,   0.40),
+    ("gemini-1.5-flash",      0.075,  0.30),
+    ("gemini-1.5-pro",        1.25,   5.00),
+    # Groq — https://groq.com/pricing
+    ("llama-3.3-70b",         0.59,   0.79),
+    ("llama-3.1-8b",          0.05,   0.08),
+    # Mistral — https://mistral.ai/technology
+    ("mistral-large",         2.00,   6.00),
+    ("mistral-small",         0.20,   0.60),
+]
+
 
 def parse_model_str(model_str: str) -> tuple[str, str]:
     """Parse 'provider:model-id' → (provider, model_id). Bare names default to anthropic."""
@@ -51,6 +86,25 @@ def parse_model_str(model_str: str) -> tuple[str, str]:
         provider, model_id = model_str.split(":", 1)
         return provider.lower(), model_id
     return "anthropic", model_str
+
+
+def get_model_price(model_str: str) -> tuple[float, float] | None:
+    """Return (input_per_mtok, output_per_mtok) for a model, or None if unknown."""
+    _, model_id = parse_model_str(model_str)
+    model_id_lower = model_id.lower()
+    for substring, input_price, output_price in MODEL_PRICING:
+        if substring in model_id_lower:
+            return input_price, output_price
+    return None
+
+
+def calculate_cost(model_str: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Return the USD cost for a given token usage, or None if pricing is unknown."""
+    price = get_model_price(model_str)
+    if price is None:
+        return None
+    input_per_mtok, output_per_mtok = price
+    return (input_tokens / 1_000_000) * input_per_mtok + (output_tokens / 1_000_000) * output_per_mtok
 
 
 def load_default_model() -> str:

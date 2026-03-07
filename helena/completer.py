@@ -119,8 +119,19 @@ def build_completer() -> NestedCompleter:
 # Bottom toolbar
 # ---------------------------------------------------------------------------
 
+_toolbar_stats: str = ""
+
+
+def set_toolbar_stats(stats: str) -> None:
+    """Update the stats displayed in the bottom-right corner of the toolbar."""
+    global _toolbar_stats
+    _toolbar_stats = stats
+
+
 def get_toolbar() -> HTML:
     """Context-sensitive bottom toolbar; called on every keystroke by prompt_toolkit."""
+    import re
+    import shutil
     from prompt_toolkit.application import get_app
     try:
         text = get_app().current_buffer.text
@@ -128,33 +139,40 @@ def get_toolbar() -> HTML:
         return HTML("")
 
     if text.startswith("/model"):
-        return HTML(
+        left = (
             "  <b>/model</b> <i>provider:model-id</i>  ·  "
             "leave blank to open the interactive picker  ·  "
             "Tab to autocomplete"
         )
-    if text.startswith("/key"):
-        return HTML(
+    elif text.startswith("/key"):
+        left = (
             "  <b>/key</b> <i>api-key</i>  ·  "
             "set &amp; save the API key for the current provider"
         )
-    if text.startswith("/clear") or text.startswith("/reset"):
-        return HTML("  <b>/clear</b>  ·  wipe conversation history")
-    if text.startswith("/skills"):
-        return HTML("  <b>/skills</b>  ·  list loaded skill files")
-    if text.startswith("/help"):
-        return HTML("  <b>/help</b>  ·  show all commands")
-    if text.startswith("/"):
-        return HTML(
+    elif text.startswith("/clear") or text.startswith("/reset"):
+        left = "  <b>/clear</b>  ·  wipe conversation history"
+    elif text.startswith("/skills"):
+        left = "  <b>/skills</b>  ·  list loaded skill files"
+    elif text.startswith("/help"):
+        left = "  <b>/help</b>  ·  show all commands"
+    elif text.startswith("/"):
+        left = (
             "  Commands: "
             "<b>/model</b>  <b>/key</b>  <b>/clear</b>  "
             "<b>/skills</b>  <b>/help</b>  ·  "
             "type <b>exit</b> to quit"
         )
-    return HTML(
-        "  <b>Helena Code</b>  ·  "
-        "type a request or <b>/help</b> for commands"
-    )
+    else:
+        left = "  <b>Helena Code</b>  ·  type a request or <b>/help</b> for commands"
+
+    if not _toolbar_stats:
+        return HTML(left)
+
+    right = f"  {_toolbar_stats}  "
+    width = shutil.get_terminal_size().columns
+    left_display_len = len(re.sub(r"<[^>]+>", "", left).replace("&amp;", "&"))
+    padding = max(1, width - left_display_len - len(right))
+    return HTML(left + " " * padding + right)
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,33 @@ import re
 import tempfile
 from pathlib import Path
 
-from ..tool_events import emit_call, emit_return, emit_diff
+from ..tool_events import emit_call, emit_return, emit_diff, emit_patch
+from ..lsp.client import SEVERITY
+
+
+async def _lsp_diagnostics_suffix(path: str) -> str:
+    """Return a formatted diagnostics block to append to a tool result, or '' if unavailable."""
+    try:
+        from ..lsp.manager import get_client
+        client = await get_client(str(Path(path).expanduser().resolve()))
+        if client is None:
+            return ""
+        diags = await client.get_diagnostics(path)
+        if not diags:
+            return "\n\nLSP: no diagnostics — file looks clean."
+        lines = []
+        for d in diags:
+            sev = SEVERITY.get(d.get("severity", 1), "ERROR")
+            start = d.get("range", {}).get("start", {})
+            ln = start.get("line", 0) + 1
+            col = start.get("character", 0) + 1
+            msg = d.get("message", "")
+            source = d.get("source", "")
+            prefix = f"[{source}] " if source else ""
+            lines.append(f"  {sev} {ln}:{col}  {prefix}{msg}")
+        return "\n\nLSP diagnostics:\n" + "\n".join(lines)
+    except Exception:
+        return ""
 
 
 async def read_file(path: str, offset: int = 1, limit: int = 2000) -> str:
@@ -38,6 +64,8 @@ async def write_file(path: str, content: str) -> str:
     """
     emit_call("write_file", {"path": path, "content": content[:80] + "..." if len(content) > 80 else content})
     result = await asyncio.to_thread(_write_file_sync, path, content)
+    if result.startswith("Successfully"):
+        result += await _lsp_diagnostics_suffix(path)
     emit_return("write_file", result)
     return result
 
@@ -58,6 +86,8 @@ async def edit_file(path: str, old_string: str, new_string: str) -> str:
     result, old_str, new_str = await asyncio.to_thread(_edit_file_sync, path, old_string, new_string)
     if old_str is not None:
         emit_diff(path, old_str, new_str)
+    if result.startswith("Successfully"):
+        result += await _lsp_diagnostics_suffix(path)
     emit_return("edit_file", result)
     return result
 
@@ -76,6 +106,9 @@ async def patch_file(path: str, diff: str) -> str:
     """
     emit_call("patch_file", {"path": path})
     result = await asyncio.to_thread(_patch_file_sync, path, diff)
+    if result.startswith("Successfully"):
+        emit_patch(path, diff)
+        result += await _lsp_diagnostics_suffix(path)
     emit_return("patch_file", result)
     return result
 

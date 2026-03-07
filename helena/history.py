@@ -11,10 +11,14 @@ from pydantic_ai.messages import ModelMessagesTypeAdapter
 HELENA_DIR = ".helena"
 HISTORY_FILE = "history.json"
 
-# Tool results larger than this are truncated before being stored/reused as
-# context.  Keeps per-turn input costs sane when files/bash output are large.
-_MAX_TOOL_RESULT_CHARS = 3_000
-_MAX_HISTORY_MESSAGES = 40   # ~20 turns; oldest messages are dropped when exceeded
+# Tool results larger than this are truncated in stored history.
+_MAX_TOOL_RESULT_CHARS = 1_500
+# Oldest messages are dropped when this limit is exceeded.
+_MAX_HISTORY_MESSAGES = 25   # ~12 turns
+# Messages beyond the last N have their tool outputs stripped to "[omitted]".
+_PRUNE_OLD_AFTER = 10
+# Compact history when input token usage exceeds this fraction of context window.
+_COMPACT_THRESHOLD = 0.65
 
 
 def _history_path() -> Path:
@@ -55,15 +59,133 @@ def trim_tool_results(messages: list) -> list:
     return out
 
 
+def prune_old_tool_results(messages: list, keep_recent: int = _PRUNE_OLD_AFTER) -> list:
+    """Strip tool result content from messages older than the last N.
+
+    Old tool outputs are rarely needed verbatim — the agent has already
+    reasoned from them.  Stripping them to a placeholder dramatically reduces
+    input tokens for long sessions without losing important context.
+    """
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+    if len(messages) <= keep_recent:
+        return messages
+
+    old_messages = messages[:-keep_recent]
+    recent_messages = messages[-keep_recent:]
+
+    pruned_old = []
+    for msg in old_messages:
+        if not isinstance(msg, ModelRequest):
+            pruned_old.append(msg)
+            continue
+        new_parts = []
+        changed = False
+        for part in msg.parts:
+            if (
+                isinstance(part, ToolReturnPart)
+                and isinstance(part.content, str)
+                and len(part.content) > 50
+            ):
+                new_parts.append(replace(part, content="[output omitted]"))
+                changed = True
+            else:
+                new_parts.append(part)
+        pruned_old.append(replace(msg, parts=new_parts) if changed else msg)
+
+    return pruned_old + recent_messages
+
+
 def trim_history(messages: list) -> list:
     """Drop the oldest messages when history exceeds _MAX_HISTORY_MESSAGES.
 
     Keeps the most recent messages so the agent always has fresh context.
-    Combined with trim_tool_results this keeps per-turn costs bounded.
+    Combined with trim_tool_results and prune_old_tool_results this keeps
+    per-turn costs bounded.
     """
     if len(messages) > _MAX_HISTORY_MESSAGES:
         return messages[-_MAX_HISTORY_MESSAGES:]
     return messages
+
+
+def _messages_to_text(messages: list) -> str:
+    """Serialize messages to plain text for compaction summarization."""
+    from pydantic_ai.messages import (
+        ModelRequest, ModelResponse, TextPart,
+        UserPromptPart, ToolReturnPart, ToolCallPart,
+    )
+
+    lines = []
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart):
+                    content = part.content if isinstance(part.content, str) else str(part.content)
+                    lines.append(f"User: {content[:600]}")
+                elif isinstance(part, ToolReturnPart):
+                    lines.append(f"  [tool_result:{part.tool_name}]: {str(part.content)[:200]}")
+        elif isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, TextPart):
+                    lines.append(f"Assistant: {part.content[:600]}")
+                elif isinstance(part, ToolCallPart):
+                    lines.append(f"  [tool_call:{part.tool_name}({str(part.args)[:150]})]")
+    return "\n".join(lines)
+
+
+async def compact_history(messages: list, model_name: str) -> list:
+    """Summarize old messages and replace them with a compact summary message.
+
+    Keeps the last _PRUNE_OLD_AFTER messages verbatim so recent context is
+    preserved.  The summary is injected as a synthetic user message that the
+    agent can read to reconstruct the conversation context.
+
+    Returns the new (shorter) message list, or the original list if compaction
+    fails.
+    """
+    from pydantic_ai import Agent
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from .config import resolve_model
+
+    keep_recent = _PRUNE_OLD_AFTER
+    if len(messages) <= keep_recent:
+        return messages
+
+    to_summarize = messages[:-keep_recent]
+    to_keep = messages[-keep_recent:]
+
+    conversation_text = _messages_to_text(to_summarize)
+    if not conversation_text.strip():
+        return messages
+
+    compaction_prompt = (
+        "Summarize the following conversation for an AI coding assistant. "
+        "Be detailed but concise. Include:\n"
+        "- The user's goal(s) and key instructions\n"
+        "- Important discoveries and decisions\n"
+        "- Files read, created, or modified\n"
+        "- Work completed and what is still pending\n\n"
+        f"Conversation:\n{conversation_text}"
+    )
+
+    try:
+        summarizer = Agent(
+            resolve_model(model_name),
+            system_prompt="You summarize AI coding assistant conversations for context compaction.",
+        )
+        result = await summarizer.run(compaction_prompt)
+        summary = result.output.strip()
+        if not summary:
+            return messages
+    except Exception:
+        return messages
+
+    summary_msg = ModelRequest(parts=[
+        UserPromptPart(
+            content=f"[Conversation compacted — earlier context summary]\n\n{summary}",
+        ),
+    ])
+    return [summary_msg] + to_keep
 
 
 def load_history() -> list:

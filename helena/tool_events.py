@@ -37,3 +37,9 @@ def emit_diff(path: str, old_string: str, new_string: str) -> None:
     h = _handler.get()
     if h:
         h("diff", path, {"old": old_string, "new": new_string})
+
+
+def emit_patch(path: str, diff: str) -> None:
+    h = _handler.get()
+    if h:
+        h("patch", path, {"diff": diff})

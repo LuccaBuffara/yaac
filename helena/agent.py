@@ -15,6 +15,8 @@ from .tools import (
     spawn_subagent,
     create_skill,
     create_agent_profile,
+    lsp_diagnostics,
+    lsp_query,
 )
 from .skills import init_skills, build_catalog, activate_skill, list_skill_names
 
@@ -50,6 +52,18 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - `spawn_subagent` — Delegate a subtask to an independent subagent; optionally specify a `profile` for a specialized persona
 - `create_skill` — Persist a new skill to `.helena/skills/` so it's available in all future sessions
 - `create_agent_profile` — Persist a new agent profile to `.helena/agents/` for use with `spawn_subagent`
+- `lsp_diagnostics` — Get real type errors and warnings from a language server after editing a file
+- `lsp_query` — Query the language server for hover info, go-to-definition, references, or document symbols
+
+## LSP usage
+
+Diagnostics are automatically returned by `write_file`, `edit_file`, and `patch_file` when an LSP server is available. If the result includes `LSP diagnostics:` with errors, fix them before finishing — do not report success while errors remain.
+
+Use `lsp_query` to understand code structure:
+- `document_symbols` — see all functions/classes in a file before editing it
+- `hover` — get the type of a variable or return type of a function
+- `definition` — jump to where a symbol is defined
+- `references` — find all call sites before renaming or removing something
 
 ## When to use subagents and self-improvement
 
@@ -91,6 +105,8 @@ def create_agent(
         Tool(spawn_subagent, max_retries=3),
         Tool(create_skill, max_retries=3),
         Tool(create_agent_profile, max_retries=3),
+        Tool(lsp_diagnostics, max_retries=3),
+        Tool(lsp_query, max_retries=3),
     ]
 
     if list_skill_names():

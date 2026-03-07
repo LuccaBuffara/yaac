@@ -4,7 +4,7 @@ import asyncio
 
 from ..tool_events import emit_call, emit_return
 
-_MAX_OUTPUT_CHARS = 8_000  # bash output larger than this is tail-truncated
+_MAX_OUTPUT_CHARS = 5_000  # bash output larger than this is tail-truncated
 
 
 async def run_bash(command: str, timeout: int = 30, working_directory: str | None = None) -> str:

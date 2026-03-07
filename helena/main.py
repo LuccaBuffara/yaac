@@ -9,23 +9,26 @@ from typing import Any
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
-from rich.markdown import Markdown
-from rich.text import Text
 
 from pydantic_ai.usage import UsageLimits
 from .agent import create_agent
 from .config import (
-    check_api_key, get_context_window, load_api_keys,
+    check_api_key, get_context_window, calculate_cost, load_api_keys,
     load_default_model, parse_model_str, PROVIDER_ENV_KEYS,
     resolve_model, save_api_key, save_default_model, set_current_model,
 )
 
 _UNLIMITED = UsageLimits(request_limit=None)
-from .history import load_history, save_history, clear_history, trim_tool_results, trim_history
+from .history import (
+    clear_history,
+    trim_tool_results, trim_history, prune_old_tool_results, compact_history,
+    _COMPACT_THRESHOLD,
+)
+from .lsp.manager import shutdown_all as _lsp_shutdown
 from .skills import list_skill_names
 from .tool_events import set_handler, reset_handler
 from .ui import console, print_welcome, print_beast_followup_banner, print_error, print_info
-from .completer import build_completer, get_toolbar, run_model_picker
+from .completer import build_completer, get_toolbar, run_model_picker, set_toolbar_stats
 
 PROMPT_HISTORY_FILE = os.path.expanduser("~/.helena_prompt_history")
 
@@ -49,7 +52,7 @@ async def run_session(model: str, beast_context: str = "") -> None:
         _init_error = str(e)
     else:
         _init_error = ""
-    message_history = load_history()
+    message_history = []
 
     session: PromptSession = PromptSession(
         history=FileHistory(PROMPT_HISTORY_FILE),
@@ -63,9 +66,6 @@ async def run_session(model: str, beast_context: str = "") -> None:
         print_beast_followup_banner()
     else:
         print_welcome()
-
-    if message_history and not beast_context:
-        print_info(f"Resuming conversation ({len(message_history)} messages in history). Use /clear to start fresh.\n")
 
     if _init_error:
         print_error(f"Failed to initialise model [bold]{model}[/bold]: {_init_error}")
@@ -89,11 +89,15 @@ async def run_session(model: str, beast_context: str = "") -> None:
         names = ", ".join(f"[cyan]{s}[/cyan]" for s in skills)
         console.print(f"[dim]Skills:[/dim] {names}\n")
 
+    session_cost: list[float] = [0.0]      # mutable accumulators passed into _run_turn
+    session_tokens: list[int] = [0, 0]    # [input_total, output_total]
+
     while True:
         try:
             user_input = await session.prompt_async([("class:prompt", "\n> ")])
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Goodbye![/dim]")
+            await _lsp_shutdown()
             break
 
         user_input = user_input.strip()
@@ -187,8 +191,7 @@ async def run_session(model: str, beast_context: str = "") -> None:
 
         try:
             console.print()
-            await _run_turn(agent, user_input, message_history, model)
-            save_history(message_history)
+            await _run_turn(agent, user_input, message_history, model, session_cost, session_tokens)
         except KeyboardInterrupt:
             console.print("\n[dim]Interrupted.[/dim]")
             try:
@@ -202,8 +205,7 @@ async def run_session(model: str, beast_context: str = "") -> None:
                         f"You were working on the following task but were interrupted:\n{user_input}\n\n"
                         f"New instruction from user:\n{new_instr}"
                     )
-                    await _run_turn(agent, combined, message_history, model)
-                    save_history(message_history)
+                    await _run_turn(agent, combined, message_history, model, session_cost, session_tokens)
                 except KeyboardInterrupt:
                     console.print("\n[dim]Interrupted.[/dim]")
                 except Exception as e:
@@ -223,15 +225,22 @@ async def run_session(model: str, beast_context: str = "") -> None:
                 traceback.print_exc()
 
 
-async def _run_turn(agent: Any, user_input: str, message_history: list, model: str = "") -> None:
-    import sys
+async def _run_turn(agent: Any, user_input: str, message_history: list, model: str = "", session_cost: list[float] | None = None, session_tokens: list[int] | None = None) -> None:
     from halo import Halo
+    from pydantic_ai import Agent as _PydanticAgent
 
     start_time = time.monotonic()
     spinner = Halo(text="thinking...", spinner="dots2", stream=sys.stdout)
     spinner.start()
+    streaming_active = False
 
     def _on_tool_event(event_type: str, tool_name: str, data: Any) -> None:
+        nonlocal streaming_active
+        if streaming_active:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            streaming_active = False
+
         if event_type == "call" and isinstance(data, dict):
             arg_str = ", ".join(f"{k}={repr(v)[:50]}" for k, v in data.items())
             spinner.stop()
@@ -241,6 +250,10 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
         elif event_type == "diff" and isinstance(data, dict):
             spinner.stop()
             _print_diff(tool_name, data["old"], data["new"])
+            spinner.start()
+        elif event_type == "patch" and isinstance(data, dict):
+            spinner.stop()
+            _print_patch(tool_name, data["diff"])
             spinner.start()
         elif event_type == "return":
             lines = str(data).splitlines()
@@ -254,42 +267,88 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
 
     token = set_handler(_on_tool_event)
     usage = None
-    response_text = ""
+    run = None
     try:
-        result = await agent.run(user_input, message_history=trim_history(trim_tool_results(message_history)), usage_limits=_UNLIMITED)
-        response_text = result.output
-        usage = result.usage()
-        message_history[:] = list(result.all_messages())
+        prepared = prune_old_tool_results(trim_history(trim_tool_results(message_history)))
+        async with agent.iter(user_input, message_history=prepared, usage_limits=_UNLIMITED) as run:
+            async for node in run:
+                if _PydanticAgent.is_model_request_node(node):
+                    turn_text = ""
+                    first_chunk = True
+                    async with node.stream(run.ctx) as stream:
+                        async for chunk in stream.stream_text(delta=True):
+                            if first_chunk:
+                                spinner.stop()
+                                streaming_active = True
+                                first_chunk = False
+                            turn_text += chunk
+                            sys.stdout.write(chunk)
+                            sys.stdout.flush()
+                    if streaming_active:
+                        sys.stdout.write("\n")
+                        sys.stdout.flush()
+                        streaming_active = False
+
+                elif _PydanticAgent.is_call_tools_node(node):
+                    spinner.text = "thinking..."
+                    spinner.start()
+
+                elif _PydanticAgent.is_end_node(node):
+                    break
+
+        usage = run.usage() if run is not None else None
+        message_history[:] = list(run.all_messages()) if run is not None else message_history
         elapsed = time.monotonic() - start_time
         spinner.succeed(f"done  {elapsed:.1f}s")
     except KeyboardInterrupt:
+        if streaming_active:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
         spinner.stop()
         raise
     except Exception:
+        if streaming_active:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
         elapsed = time.monotonic() - start_time
         spinner.fail(f"failed  {elapsed:.1f}s")
         raise
     finally:
         reset_handler(token)
 
-    console.print()
-    console.print(Markdown(response_text))
-
     elapsed_total = time.monotonic() - start_time
     parts_stats = [f"{elapsed_total:.1f}s"]
+    ctx_window = get_context_window(model)
+    input_pct = 0.0
     if usage:
-        if usage.input_tokens:
-            parts_stats.append(f"in {usage.input_tokens:,}")
-        if usage.output_tokens:
-            parts_stats.append(f"out {usage.output_tokens:,}")
-        if usage.total_tokens:
-            parts_stats.append(f"total {usage.total_tokens:,} tokens")
-        ctx_window = get_context_window(model)
-        if ctx_window and message_history:
-            est = _estimate_history_tokens(message_history)
-            pct = est / ctx_window * 100
-            parts_stats.append(f"~{pct:.1f}% ctx")
-    console.print(Text("  " + " · ".join(parts_stats), style="dim"))
+        in_tok = usage.input_tokens or 0
+        out_tok = usage.output_tokens or 0
+        if session_tokens is not None:
+            session_tokens[0] += in_tok
+            session_tokens[1] += out_tok
+        s_in = session_tokens[0] if session_tokens else in_tok
+        s_out = session_tokens[1] if session_tokens else out_tok
+        s_total = s_in + s_out
+        if s_total:
+            parts_stats.append(f"in {s_in:,} · out {s_out:,} · total {s_total:,} tok")
+        if ctx_window and s_in:
+            input_pct = s_in / ctx_window
+            parts_stats.append(f"ctx {input_pct * 100:.1f}%")
+        turn_cost = calculate_cost(model, in_tok, out_tok)
+        if turn_cost is not None:
+            if session_cost is not None:
+                session_cost[0] += turn_cost
+            total_cost = session_cost[0] if session_cost else turn_cost
+            cost_str = f"<$0.001" if total_cost < 0.001 else f"${total_cost:.4f}"
+            parts_stats.append(cost_str)
+    if len(parts_stats) > 1:
+        set_toolbar_stats(" · ".join(parts_stats))
+
+    # Compact history when context usage is high to avoid runaway token costs.
+    if ctx_window and input_pct >= _COMPACT_THRESHOLD and len(message_history) > 2:
+        print_info("Compacting conversation history to reduce context size...")
+        message_history[:] = await compact_history(message_history, model)
+        print_info("History compacted.")
 
 
 
@@ -309,6 +368,23 @@ _LANG_MAP: dict[str, str] = {
 def _detect_language(path: str) -> str:
     from pathlib import Path as P
     return _LANG_MAP.get(P(path).suffix.lower(), "text")
+
+
+def _print_patch(path: str, diff: str) -> None:
+    from rich.syntax import Syntax
+    from rich.panel import Panel as RPanel
+
+    filename = path.split("/")[-1]
+    syntax = Syntax(
+        diff.strip(), "diff",
+        theme="monokai", line_numbers=True,
+        background_color="default", word_wrap=True,
+    )
+    console.print(RPanel(
+        syntax,
+        title=f"[cyan]~ patch[/cyan]  [dim]{filename}[/dim]",
+        border_style="cyan", padding=(0, 1),
+    ))
 
 
 def _print_diff(path: str, old_str: str, new_str: str) -> None:
