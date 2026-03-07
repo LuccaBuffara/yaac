@@ -25,13 +25,13 @@ Runs in your terminal, reads and edits your files, executes commands — like Cl
 ### Global install from GitHub
 
 ```bash
-pip install "git+https://github.com/<your-org>/yaac.git"
+pip install "git+https://github.com/LuccaBuffara/yaac.git"
 ```
 
 ### Update
 
 ```bash
-pip install --upgrade --force-reinstall "git+https://github.com/<your-org>/yaac.git"
+pip install --upgrade --force-reinstall "git+https://github.com/LuccaBuffara/yaac.git"
 ```
 
 ### Local / development install
