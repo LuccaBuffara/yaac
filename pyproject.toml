@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "yaac"
+name = "yaacai"
 version = "0.1.0"
 description = "YAAC (Yet Another Agentic Coder) - An AI coding assistant powered by Pydantic AI"
 readme = "README.md"
