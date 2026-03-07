@@ -9,7 +9,7 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
 
 
 async def create_skill(name: str, description: str, instructions: str) -> str:
-    """Persist a new skill to ~/.helena/skills/ so it's available in all future sessions and auto-discovered locations.
+    """Persist a new skill to ~/.yaac/skills/ so it's available in all future sessions and auto-discovered locations.
 
     Args:
         name: Lowercase alphanumeric with hyphens (e.g. 'deploy-aws').
@@ -26,7 +26,7 @@ async def create_skill(name: str, description: str, instructions: str) -> str:
         emit_return("create_skill", result)
         return result
 
-    skill_dir = Path.home() / ".helena" / "skills" / name
+    skill_dir = Path.home() / ".yaac" / "skills" / name
     skill_file = skill_dir / "SKILL.md"
 
     try:
@@ -47,7 +47,7 @@ async def create_skill(name: str, description: str, instructions: str) -> str:
 
 
 async def create_agent_profile(name: str, description: str, system_prompt: str) -> str:
-    """Persist a new agent profile to ~/.helena/agents/ for use with spawn_subagent.
+    """Persist a new agent profile to ~/.yaac/agents/ for use with spawn_subagent.
 
     Args:
         name: Lowercase alphanumeric with hyphens (e.g. 'test-writer').
@@ -64,7 +64,7 @@ async def create_agent_profile(name: str, description: str, system_prompt: str) 
         emit_return("create_agent_profile", result)
         return result
 
-    profile_dir = Path.home() / ".helena" / "agents" / name
+    profile_dir = Path.home() / ".yaac" / "agents" / name
     profile_file = profile_dir / "AGENT.md"
 
     try:

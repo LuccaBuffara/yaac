@@ -6,8 +6,8 @@ Follows the agentskills.io open format:
 - Activation: full body loaded on-demand via activate_skill() tool
 
 Discovery paths (in priority order):
-  Project-level:  <cwd>/.helena/skills/  |  <cwd>/.agents/skills/  |  <cwd>/skills/
-  User-level:     ~/.helena/skills/       |  ~/.claude/skills/      |  ~/.agents/skills/
+  Project-level:  <cwd>/.yaac/skills/    |  <cwd>/.agents/skills/  |  <cwd>/skills/
+  User-level:     ~/.yaac/skills/         |  ~/.claude/skills/      |  ~/.agents/skills/
 """
 
 from __future__ import annotations
@@ -41,10 +41,10 @@ def _scan_dirs() -> list[Path]:
     cwd = Path.cwd()
     home = Path.home()
     return [
-        cwd / ".helena" / "skills",
+        cwd / ".yaac" / "skills",
         cwd / ".agents" / "skills",
         cwd / "skills",
-        home / ".helena" / "skills",
+        home / ".yaac" / "skills",
         home / ".claude" / "skills",
         home / ".agents" / "skills",
     ]

@@ -19,7 +19,7 @@ async def spawn_subagent(
 
     Args:
         task: The subtask description.
-        profile: Optional profile name from .helena/agents/ for a specialized persona.
+        profile: Optional profile name from .yaac/agents/ for a specialized persona.
         context: Optional extra context prepended to the task.
 
     Returns:
@@ -44,8 +44,8 @@ def _load_profile(name: str) -> str:
     from ..skills import _parse_frontmatter
 
     for base in (
-        Path.cwd() / ".helena" / "agents",
-        Path.home() / ".helena" / "agents",
+        Path.cwd() / ".yaac" / "agents",
+        Path.home() / ".yaac" / "agents",
     ):
         path = base / name / "AGENT.md"
         if path.exists():

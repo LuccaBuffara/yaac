@@ -410,7 +410,7 @@ def _print_help(skills: list[str]) -> None:
         "  [cyan]exit[/cyan]            Quit\n\n"
         "Model format: [yellow]provider:model-id[/yellow]\n"
         "  Providers: [yellow]anthropic, openai, google, groq, mistral, ollama[/yellow]\n\n"
-        "Config file: [yellow]~/.helena/config.json[/yellow]  "
+        "Config file: [yellow]~/.yaac/config.json[/yellow]  "
         "(keys and default model are persisted here)\n"
         "Env var override: [yellow]YAAC_MODEL[/yellow]\n"
         "Set [yellow]YAAC_DEBUG=1[/yellow] for full error tracebacks.\n"
@@ -440,12 +440,12 @@ def main() -> None:
         help=(
             "Model to use, as provider:model-id "
             "(e.g. anthropic:claude-sonnet-4-6, openai:gpt-4o, google:gemini-2.0-flash). "
-            "Defaults to YAAC_MODEL env var or ~/.helena/config.json."
+            "Defaults to YAAC_MODEL env var or ~/.yaac/config.json."
         ),
     )
     args = parser.parse_args()
 
-    # Load any API keys saved in ~/.helena/config.json into the environment first.
+    # Load any API keys saved in ~/.yaac/config.json into the environment first.
     load_api_keys()
 
     model = args.model or load_default_model()

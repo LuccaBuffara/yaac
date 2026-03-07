@@ -63,5 +63,5 @@ Just type your request at the `>` prompt:
 pip install -e ".[dev]"
 
 # Run directly without installing
-python -m helena.main
+python -m yaac.main
 ```

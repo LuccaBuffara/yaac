@@ -1,6 +1,6 @@
 """Conversation history persistence for YAAC.
 
-Saves and loads the full message history to .helena/history.json in the
+Saves and loads the full message history to .yaac/history.json in the
 working directory, so conversations persist across sessions.
 """
 
@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 
-HELENA_DIR = ".helena"
+HELENA_DIR = ".yaac"
 HISTORY_FILE = "history.json"
 
 # Tool results larger than this are truncated in stored history.
@@ -220,7 +220,7 @@ async def compact_history(messages: list, model_name: str) -> list:
 
 
 def load_history() -> list:
-    """Load conversation history from .helena/history.json.
+    """Load conversation history from .yaac/history.json.
 
     Returns an empty list if no history file exists yet.
     """
@@ -235,7 +235,7 @@ def load_history() -> list:
 
 
 def save_history(messages: list) -> None:
-    """Persist conversation history to .helena/history.json."""
+    """Persist conversation history to .yaac/history.json."""
     path = _history_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(ModelMessagesTypeAdapter.dump_json(trim_history(trim_tool_results(messages))))

@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 
-CONFIG_PATH = Path.home() / ".helena" / "config.json"
+CONFIG_PATH = Path.home() / ".yaac" / "config.json"
 DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
 
 # Runtime override — set when the user switches models mid-session.
@@ -153,7 +153,7 @@ def set_current_model(model_str: str) -> None:
 
 
 def save_default_model(model_str: str) -> None:
-    """Persist the default model to ~/.helena/config.json."""
+    """Persist the default model to ~/.yaac/config.json."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     existing: dict = {}
     if CONFIG_PATH.exists():
@@ -238,7 +238,7 @@ def check_api_key(model_str: str) -> tuple[bool, str | None]:
 
 
 def load_api_keys() -> None:
-    """Load API keys saved in ~/.helena/config.json into os.environ (non-overriding)."""
+    """Load API keys saved in ~/.yaac/config.json into os.environ (non-overriding)."""
     if not CONFIG_PATH.exists():
         return
     try:
@@ -251,7 +251,7 @@ def load_api_keys() -> None:
 
 
 def save_api_key(env_var: str, value: str) -> None:
-    """Save an API key to ~/.helena/config.json and set it in os.environ."""
+    """Save an API key to ~/.yaac/config.json and set it in os.environ."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     existing: dict = {}
     if CONFIG_PATH.exists():
