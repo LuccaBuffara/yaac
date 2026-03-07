@@ -39,7 +39,7 @@ def trim_tool_results(messages: list) -> list:
         if not isinstance(msg, ModelRequest):
             out.append(msg)
             continue
-        new_parts = list(msg.parts)
+        new_parts = []
         changed = False
         for part in msg.parts:
             if (
@@ -54,7 +54,7 @@ def trim_tool_results(messages: list) -> list:
                 new_parts.append(replace(part, content=truncated))
                 changed = True
             else:
-                pass
+                new_parts.append(part)
         out.append(replace(msg, parts=new_parts) if changed else msg)
     return out
 
@@ -79,7 +79,7 @@ def prune_old_tool_results(messages: list, keep_recent: int = _PRUNE_OLD_AFTER) 
         if not isinstance(msg, ModelRequest):
             pruned_old.append(msg)
             continue
-        new_parts = list(msg.parts)
+        new_parts = []
         changed = False
         for part in msg.parts:
             if (
@@ -90,7 +90,7 @@ def prune_old_tool_results(messages: list, keep_recent: int = _PRUNE_OLD_AFTER) 
                 new_parts.append(replace(part, content="[output omitted]"))
                 changed = True
             else:
-                pass
+                new_parts.append(part)
         pruned_old.append(replace(msg, parts=new_parts) if changed else msg)
 
     return pruned_old + recent_messages
