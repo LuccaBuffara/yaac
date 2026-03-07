@@ -11,7 +11,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 
-from pydantic_ai.messages import PartStartEvent, PartDeltaEvent, TextPartDelta, ToolCallPart
+from pydantic_ai.messages import PartStartEvent, PartDeltaEvent, TextPartDelta, TextPart, ToolCallPart
 from pydantic_ai.usage import UsageLimits
 from .agent import create_agent
 from rich.markdown import Markdown
@@ -372,8 +372,6 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                             if interrupt_monitor.triggered():
                                 raise KeyboardInterrupt
                             if isinstance(event, PartStartEvent) and isinstance(event.part, ToolCallPart):
-                                # Model finished text and started generating tool-call args.
-                                # Show which tool is being built so the terminal never looks frozen.
                                 if streaming_active:
                                     console.print(Markdown(turn_text))
                                     turn_text = ""
@@ -381,6 +379,17 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                                 spinner.stop()
                                 spinner.text = f"building {event.part.tool_name} call..."
                                 spinner.start()
+                            elif isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
+                                chunk = event.part.content
+                                if chunk:
+                                    if not streaming_active:
+                                        spinner.stop()
+                                        sys.stdout.write("\r\033[2K")
+                                        sys.stdout.flush()
+                                        streaming_active = True
+                                    sys.stdout.write(chunk)
+                                    sys.stdout.flush()
+                                    turn_text += chunk
                             elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
                                 chunk = event.delta.content_delta
                                 if not streaming_active:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yaacai"
-version = "0.1.1"
+version = "0.1.2"
 description = "YAAC (Yet Another Agentic Coder) - An AI coding assistant powered by Pydantic AI"
 readme = "README.md"
 requires-python = ">=3.11"
