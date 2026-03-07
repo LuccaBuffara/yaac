@@ -284,10 +284,16 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                             turn_text += chunk
                             sys.stdout.write(chunk)
                             sys.stdout.flush()
-                    if streaming_active:
-                        sys.stdout.write("\n")
-                        sys.stdout.flush()
-                        streaming_active = False
+                        # Text chunks exhausted; model may still be generating
+                        # tool call arguments (e.g. a large patch diff).
+                        # Restart the spinner so the terminal doesn't go blank.
+                        if streaming_active:
+                            sys.stdout.write("\n")
+                            sys.stdout.flush()
+                            streaming_active = False
+                        spinner.text = "generating..."
+                        spinner.start()
+                    spinner.stop()
 
                 elif _PydanticAgent.is_call_tools_node(node):
                     spinner.text = "thinking..."
