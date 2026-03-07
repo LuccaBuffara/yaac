@@ -4,7 +4,7 @@ import os
 import sys
 import asyncio
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -36,6 +36,10 @@ PROMPT_HISTORY_FILE = os.path.expanduser("~/.helena_prompt_history")
 
 PROMPT_STYLE = Style.from_dict({"prompt": "ansicyan bold"})
 
+if TYPE_CHECKING:
+    from pydantic_ai.messages import ModelMessage
+    from halo import Halo as HaloType  # type: ignore[import-untyped]
+
 
 def _estimate_history_tokens(message_history: list) -> int:
     """Estimate token count of message history (4 chars ≈ 1 token)."""
@@ -54,7 +58,7 @@ async def run_session(model: str, beast_context: str = "") -> None:
         _init_error = str(e)
     else:
         _init_error = ""
-    message_history = []
+    message_history: list[ModelMessage] = []
 
     session: PromptSession = PromptSession(
         history=FileHistory(PROMPT_HISTORY_FILE),
@@ -228,11 +232,11 @@ async def run_session(model: str, beast_context: str = "") -> None:
 
 
 async def _run_turn(agent: Any, user_input: str, message_history: list, model: str = "", session_cost: list[float] | None = None, session_tokens: list[int] | None = None) -> None:
-    from halo import Halo
+    from halo import Halo as _Halo
     from pydantic_ai import Agent as _PydanticAgent
 
     start_time = time.monotonic()
-    spinner = Halo(text="thinking...", spinner="dots2", stream=sys.stdout)
+    spinner: HaloType = _Halo(text="thinking...", spinner="dots2", stream=sys.stdout)
     spinner.start()
     streaming_active = False
 
@@ -272,8 +276,9 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
             async for node in run:
                 if _PydanticAgent.is_model_request_node(node):
                     turn_text = ""
-                    async with node.stream(run.ctx) as stream:
-                        async for event in stream:
+                    _stream_cm = cast(Any, node.stream(run.ctx))
+                    async with _stream_cm as stream:
+                        async for event in cast(Any, stream):
                             if isinstance(event, PartStartEvent) and isinstance(event.part, ToolCallPart):
                                 # Model finished text and started generating tool-call args.
                                 # Show which tool is being built so the terminal never looks frozen.
@@ -287,7 +292,12 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                             elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
                                 chunk = event.delta.content_delta
                                 if not streaming_active:
+                                    spinner.stop()
+                                    sys.stdout.write("\r\033[2K")
+                                    sys.stdout.flush()
                                     streaming_active = True
+                                sys.stdout.write(chunk)
+                                sys.stdout.flush()
                                 turn_text += chunk
                         if streaming_active and turn_text:
                             spinner.stop()

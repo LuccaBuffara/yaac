@@ -28,6 +28,7 @@ CONTEXT_WINDOWS: dict[str, int] = {
     "claude-sonnet-4": 200_000,
     "claude-haiku-4": 200_000,
     # OpenAI
+    "gpt-5.4": 1_050_000,
     "gpt-4o": 128_000,
     "gpt-4.1": 1_047_576,
     "o1": 200_000,
@@ -67,6 +68,7 @@ MODEL_PRICING: list[tuple[str, float, float]] = [
     ("claude-haiku-3-5",      0.80,   4.00),
     ("claude-haiku-3",        0.25,   1.25),
     # OpenAI — https://openai.com/api/pricing
+    ("gpt-5.4",               2.50,  15.00),
     ("gpt-4.1-nano",          0.10,   0.40),
     ("gpt-4.1-mini",          0.40,   1.60),
     ("gpt-4.1",               2.00,   8.00),

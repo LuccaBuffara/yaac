@@ -16,6 +16,7 @@ PROVIDER_MODELS: dict[str, list[str]] = {
         "claude-haiku-4-5",
     ],
     "openai": [
+        "gpt-5.4",
         "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
@@ -60,6 +61,7 @@ _MODEL_DESCRIPTIONS: dict[str, str] = {
     "claude-opus-4-6":          "Most capable",
     "claude-sonnet-4-6":        "Balanced (default)",
     "claude-haiku-4-5":         "Fast & lightweight",
+    "gpt-5.4":                  "Frontier reasoning, 1M ctx",
     "gpt-4.1":                  "Flagship GPT-4.1",
     "gpt-4.1-mini":             "Balanced GPT-4.1",
     "gpt-4.1-nano":             "Fastest, cheapest GPT-4.1",
