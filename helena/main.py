@@ -13,6 +13,7 @@ from prompt_toolkit.styles import Style
 from pydantic_ai.messages import PartStartEvent, PartDeltaEvent, TextPartDelta, ToolCallPart
 from pydantic_ai.usage import UsageLimits
 from .agent import create_agent
+from rich.markdown import Markdown
 from .config import (
     check_api_key, get_context_window, calculate_cost, load_api_keys,
     load_default_model, parse_model_str, PROVIDER_ENV_KEYS,
@@ -277,8 +278,8 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                                 # Model finished text and started generating tool-call args.
                                 # Show which tool is being built so the terminal never looks frozen.
                                 if streaming_active:
-                                    sys.stdout.write("\n")
-                                    sys.stdout.flush()
+                                    console.print(Markdown(turn_text))
+                                    turn_text = ""
                                     streaming_active = False
                                 spinner.stop()
                                 spinner.text = f"building {event.part.tool_name} call..."
@@ -286,14 +287,13 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                             elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
                                 chunk = event.delta.content_delta
                                 if not streaming_active:
-                                    spinner.stop()
                                     streaming_active = True
                                 turn_text += chunk
-                                sys.stdout.write(chunk)
-                                sys.stdout.flush()
+                        if streaming_active and turn_text:
+                            spinner.stop()
+                            console.print(Markdown(turn_text))
+                            turn_text = ""
                         if streaming_active:
-                            sys.stdout.write("\n")
-                            sys.stdout.flush()
                             streaming_active = False
                     spinner.stop()
 
