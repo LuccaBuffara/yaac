@@ -16,6 +16,7 @@ from .tools import (
     plan_mode,
     create_agent_profile,
     lsp_diagnostics,
+    ensure_plan_mode_profile,
     lsp_query,
 )
 from .skills import init_skills, build_catalog, activate_skill, list_skill_names
@@ -37,8 +38,8 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - **Security first**: Never introduce vulnerabilities (injection, XSS, etc).
 - **Minimal changes**: Only change what's necessary. Don't refactor or "improve" code not related to the task.
 - **Confirm destructive actions**: Before deleting files or running destructive commands, describe what you will do.
-- **Use plan mode for very complex tasks**: If a task is large, ambiguous, or requires thorough thinking before implementation, call `plan_mode` early to create a `TODO.md` plan, then follow that plan while executing the work.
-- **Look for TODO.md**: If a `TODO.md` file already exists in the working directory or relevant project folder, read it and use it as planning context before starting work.
+- **Use plan mode for very complex tasks**: If a task is large, ambiguous, or requires thorough thinking before implementation, call `plan_mode` early to delegate to the dedicated read-only planning agent.
+- **Look for planning context**: If the user provides an existing plan or planning artifact, read it and use it as context before starting work.
 - **Keep plans actionable**: Plans should be concrete, ordered, and directly tied to execution.
 
 ## Tool usage
@@ -54,7 +55,7 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - `spawn_subagent` — Delegate a subtask to an independent subagent; optionally specify a `profile` for a specialized persona
 - `create_skill` — Persist a new skill to `.yaac/skills/` so it's available in all future sessions and discovered alongside other skill directories
 - `create_agent_profile` — Persist a new agent profile to `.yaac/agents/` for use with `spawn_subagent`
-- `plan_mode` — Create or update a `TODO.md` execution plan for very complex tasks
+- `plan_mode` — Delegate planning to a dedicated read-only planning agent
 - `lsp_diagnostics` — Get real type errors and warnings from a language server after editing a file
 - `lsp_query` — Query the language server for hover info, go-to-definition, references, or document symbols
 
@@ -92,6 +93,7 @@ def create_agent(
 ) -> Agent:
     """Create and configure the YAAC agent."""
     init_skills()
+    ensure_plan_mode_profile()
 
     model = resolve_model(model_name or get_current_model())
     system_prompt = SYSTEM_PROMPT + build_catalog() + system_prompt_addition

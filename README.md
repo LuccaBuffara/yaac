@@ -74,7 +74,7 @@ Just type your request at the `>` prompt:
 | `run_bash` | Execute shell commands |
 | `glob_search` | Find files by glob pattern |
 | `grep_search` | Search file contents by regex |
-| `plan_mode` | Create a `TODO.md` plan for very complex tasks |
+| `plan_mode` | Delegate planning to a dedicated read-only planning agent |
 
 ## Development
 
@@ -88,6 +88,6 @@ python -m yaac.main
 
 ## Planning behavior
 
-- For very complex tasks, YAAC should call `plan_mode` first to create a `TODO.md` checklist before implementation.
-- If a `TODO.md` file already exists in the workspace or relevant project directory, YAAC should read it and use it as planning context.
-- `TODO.md` is intended to hold the ordered steps YAAC will execute for that task.
+- For very complex tasks, YAAC should call `plan_mode` first to delegate exploration and implementation planning to a dedicated read-only subagent.
+- The planning agent must stay read-only: it may inspect the codebase and propose a plan, but it must not create, edit, or delete files.
+- The planning response should include actionable implementation steps and the most critical files for carrying out the work.
