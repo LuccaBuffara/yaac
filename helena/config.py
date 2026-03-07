@@ -40,6 +40,12 @@ CONTEXT_WINDOWS: dict[str, int] = {
     # Groq
     "llama-3.3-70b": 128_000,
     "llama-3.1-8b": 128_000,
+    "llama-4-scout": 131_072,
+    "llama-4-maverick": 131_072,
+    "gpt-oss-120b": 131_072,
+    "gpt-oss-20b": 131_072,
+    "kimi-k2": 262_144,
+    "qwen3-32b": 131_072,
     # Mistral
     "mistral-large": 128_000,
     "mistral-small": 32_000,
@@ -80,6 +86,12 @@ MODEL_PRICING: list[tuple[str, float, float]] = [
     # Groq — https://groq.com/pricing
     ("llama-3.3-70b",         0.59,   0.79),
     ("llama-3.1-8b",          0.05,   0.08),
+    ("llama-4-scout",         0.11,   0.34),
+    ("llama-4-maverick",      0.20,   0.60),
+    ("gpt-oss-120b",          0.15,   0.60),
+    ("gpt-oss-20b",           0.075,  0.30),
+    ("kimi-k2",               1.00,   3.00),
+    ("qwen3-32b",             0.29,   0.59),
     # Mistral — https://mistral.ai/technology
     ("mistral-large",         2.00,   6.00),
     ("mistral-small",         0.20,   0.60),

@@ -35,7 +35,12 @@ PROVIDER_MODELS: dict[str, list[str]] = {
     "groq": [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "moonshotai/kimi-k2-instruct-0905",
+        "qwen/qwen3-32b",
     ],
     "mistral": [
         "mistral-large-latest",
@@ -70,7 +75,12 @@ _MODEL_DESCRIPTIONS: dict[str, str] = {
     "gemini-1.5-flash":         "Speed-optimised",
     "llama-3.3-70b-versatile":  "Best Llama on Groq",
     "llama-3.1-8b-instant":     "Ultra-fast",
-    "mixtral-8x7b-32768":       "MoE model",
+    "llama-4-scout-17b-16e-instruct":    "Llama 4 Scout (fast, 131k ctx)",
+    "llama-4-maverick-17b-128e-instruct": "Llama 4 Maverick (balanced)",
+    "gpt-oss-120b":             "GPT OSS 120B (largest)",
+    "gpt-oss-20b":              "GPT OSS 20B (fast)",
+    "kimi-k2-instruct-0905":    "Kimi K2 (262k ctx)",
+    "qwen3-32b":                "Qwen3 32B",
     "mistral-large-latest":     "Flagship Mistral",
     "mistral-small-latest":     "Efficient",
     "codestral-latest":         "Code-specialised",
@@ -178,10 +188,12 @@ def get_toolbar() -> HTML:
     if not _toolbar_stats:
         return HTML(left)
 
-    right = f"  {_toolbar_stats}  "
+    # Escape XML-special characters in the stats string so prompt_toolkit's HTML parser doesn't choke on e.g. "<$0.001"
+    right = f"  {_toolbar_stats}  ".replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     width = shutil.get_terminal_size().columns
     left_display_len = len(re.sub(r"<[^>]+>", "", left).replace("&amp;", "&"))
-    padding = max(1, width - left_display_len - len(right))
+    right_display_len = len(right.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
+    padding = max(1, width - left_display_len - right_display_len)
     return HTML(left + " " * padding + right)
 
 
