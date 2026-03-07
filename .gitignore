@@ -1,4 +1,6 @@
 venv/
+dist/
+*.egg-info/
 .yaac/
 .claude/
 __pycache__/
