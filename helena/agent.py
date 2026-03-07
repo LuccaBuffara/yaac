@@ -1,12 +1,13 @@
 """Helena Code AI agent powered by Pydantic AI."""
 
-from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai import Agent, Tool
 
+from .config import get_current_model, resolve_model
 from .tools import (
     read_file,
     write_file,
     edit_file,
+    patch_file,
     list_directory,
     run_bash,
     glob_search,
@@ -40,6 +41,7 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - `read_file` — Read file contents with optional line offset/limit
 - `write_file` — Create or overwrite a file
 - `edit_file` — Replace an exact string in a file (must be unique)
+- `patch_file` — Apply a unified diff to a file (token-efficient for multi-hunk edits)
 - `list_directory` — List directory contents
 - `run_bash` — Execute shell commands (tests, git, build, etc.)
 - `glob_search` — Find files by glob pattern (e.g. `**/*.py`)
@@ -59,34 +61,40 @@ You have access to tools to read, write, and edit files, run shell commands, and
 
 Your working directory is the directory from which Helena Code was launched.
 Use absolute paths when in doubt.
+
+**Before asking the user about file locations, project structure, or where things are:**
+Always investigate the workspace first using `list_directory`, `glob_search`, and `grep_search`.
+Explore the current directory tree to discover files, folders, and project layout on your own.
+Only ask the user if you genuinely cannot determine something after investigating.
 """
 
 
 def create_agent(
-    model_name: str = "claude-sonnet-4-6",
+    model_name: str | None = None,
     system_prompt_addition: str = "",
 ) -> Agent:
     """Create and configure the Helena Code agent."""
     init_skills()
 
-    model = AnthropicModel(model_name)
+    model = resolve_model(model_name or get_current_model())
     system_prompt = SYSTEM_PROMPT + build_catalog() + system_prompt_addition
 
     tools = [
-        read_file,
-        write_file,
-        edit_file,
-        list_directory,
-        run_bash,
-        glob_search,
-        grep_search,
-        spawn_subagent,
-        create_skill,
-        create_agent_profile,
+        Tool(read_file, max_retries=3),
+        Tool(write_file, max_retries=3),
+        Tool(edit_file, max_retries=3),
+        Tool(patch_file, max_retries=3),
+        Tool(list_directory, max_retries=3),
+        Tool(run_bash, max_retries=3),
+        Tool(glob_search, max_retries=3),
+        Tool(grep_search, max_retries=3),
+        Tool(spawn_subagent, max_retries=3),
+        Tool(create_skill, max_retries=3),
+        Tool(create_agent_profile, max_retries=3),
     ]
 
     if list_skill_names():
-        tools.append(activate_skill)
+        tools.append(Tool(activate_skill, max_retries=3))
 
     return Agent(
         model=model,

@@ -1,6 +1,6 @@
 """Terminal UI utilities for Helena Code."""
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
@@ -20,22 +20,79 @@ HELENA_THEME = Theme(
 
 console = Console(theme=HELENA_THEME)
 
+# ---------------------------------------------------------------------------
+# ASCII art
+# ---------------------------------------------------------------------------
+
+# Each letter is 6 chars wide; letters separated by 2 spaces → 47 chars total
+_HELENA_ART = (
+    " ██  ██  ██████  ██      ██████  ██  ██    ██  \n"
+    " ██  ██  ██      ██      ██      ███ ██   ████ \n"
+    " ██████  ████    ██      ████    ██ ███  ██████\n"
+    " ██  ██  ██      ██      ██      ██  ██  ██  ██\n"
+    " ██  ██  ██████  ██████  ██████  ██  ██  ██  ██"
+)
+
+# B-E-A-S-T, each letter 6 chars wide, separated by 2 spaces → 38 chars total
+_BEAST_ART = (
+    " ████    ██████    ██     █████  ██████\n"
+    " ██  ██  ██       ████   ██        ██  \n"
+    " ████    ████    ██████   ████     ██  \n"
+    " ██  ██  ██      ██  ██      ██    ██  \n"
+    " ████    ██████  ██  ██  █████     ██  "
+)
+
+
+# ---------------------------------------------------------------------------
+# Banners
+# ---------------------------------------------------------------------------
 
 def print_welcome() -> None:
-    panel = Panel(
-        Text.assemble(
-            ("Helena Code", "bold cyan"),
-            " · ",
-            ("AI Coding Assistant", "dim white"),
-            "\n\n",
-            ("Powered by Pydantic AI + Claude\n", "dim"),
-            ('Type your request, or "exit" to quit.', "dim"),
-        ),
-        border_style="cyan",
-        padding=(1, 2),
+    art = Text(_HELENA_ART, style="bold cyan")
+    info = Text.assemble(
+        "\n  ",
+        ("C O D E", "bold white"),
+        ("  ·  AI Coding Assistant  ·  Powered by Claude", "dim"),
+        "\n\n  ",
+        ("type a request", "dim"),
+        ("  ·  ", "dim"),
+        ("/help", "bold dim"),
+        ("  ·  ", "dim"),
+        ("exit", "bold dim"),
     )
-    console.print(panel)
+    console.print(Panel(Group(art, info), border_style="cyan", padding=(1, 2)))
+    console.print()
 
+
+def print_beast_banner() -> None:
+    art = Text(_BEAST_ART, style="bold red")
+    info = Text.assemble(
+        "\n  ",
+        ("M O D E", "bold white"),
+        ("  ·  Multi-agent parallel execution  ·  Powered by Claude", "dim"),
+    )
+    console.print(Panel(Group(art, info), border_style="red", padding=(1, 2)))
+    console.print()
+
+
+def print_beast_followup_banner() -> None:
+    art = Text(_BEAST_ART, style="bold red")
+    info = Text.assemble(
+        "\n  ",
+        ("⚡ Follow-up session", "bold white"),
+        ("  ·  Ask about what the agents just completed.", "dim"),
+        "\n\n  ",
+        ("type a request", "dim"),
+        ("  ·  ", "dim"),
+        ("exit", "bold dim"),
+    )
+    console.print(Panel(Group(art, info), border_style="cyan", padding=(1, 2)))
+    console.print()
+
+
+# ---------------------------------------------------------------------------
+# Misc helpers
+# ---------------------------------------------------------------------------
 
 def print_assistant_message(text: str) -> None:
     console.print(Markdown(text), style="helena.assistant")

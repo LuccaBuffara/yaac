@@ -9,17 +9,12 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
 
 
 async def create_skill(name: str, description: str, instructions: str) -> str:
-    """Create a new persistent skill that Helena can load on-demand.
-
-    Skills are Markdown instruction sets stored in ~/.helena/skills/ and
-    persist globally across all projects and sessions. Once created the skill
-    appears in the catalog and can be activated with activate_skill.
+    """Persist a new skill to ~/.helena/skills/ so it's available in all future sessions.
 
     Args:
-        name: Unique skill name — lowercase alphanumeric with hyphens
-              (e.g. 'deploy-aws', 'write-tests').
-        description: One-line description shown in the skill catalog.
-        instructions: Full skill instructions in Markdown format.
+        name: Lowercase alphanumeric with hyphens (e.g. 'deploy-aws').
+        description: One-line description shown in the catalog.
+        instructions: Full instructions in Markdown format.
 
     Returns:
         Success or error message.
@@ -52,18 +47,12 @@ async def create_skill(name: str, description: str, instructions: str) -> str:
 
 
 async def create_agent_profile(name: str, description: str, system_prompt: str) -> str:
-    """Create a named agent profile for use with spawn_subagent.
-
-    Agent profiles are stored globally in ~/.helena/agents/ as AGENT.md files.
-    When spawn_subagent is called with profile=<name>, the profile's
-    system_prompt is appended to the subagent's base prompt, giving it
-    a specialized focus or persona.
+    """Persist a new agent profile to ~/.helena/agents/ for use with spawn_subagent.
 
     Args:
-        name: Unique profile name — lowercase alphanumeric with hyphens
-              (e.g. 'test-writer', 'security-reviewer').
+        name: Lowercase alphanumeric with hyphens (e.g. 'test-writer').
         description: What this agent specializes in.
-        system_prompt: System prompt extension / instructions for this agent.
+        system_prompt: System prompt extension for this agent.
 
     Returns:
         Success or error message.

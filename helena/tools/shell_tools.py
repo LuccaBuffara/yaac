@@ -4,6 +4,8 @@ import asyncio
 
 from ..tool_events import emit_call, emit_return
 
+_MAX_OUTPUT_CHARS = 8_000  # bash output larger than this is tail-truncated
+
 
 async def run_bash(command: str, timeout: int = 30, working_directory: str | None = None) -> str:
     """Execute a bash command and return its output.
@@ -71,6 +73,11 @@ async def run_bash(command: str, timeout: int = 30, working_directory: str | Non
             result = f"{output}\n\n[Exit code: {proc.returncode}]" if output else f"[Command failed with exit code {proc.returncode}]"
         else:
             result = output or "[Command completed with no output]"
+
+        if len(result) > _MAX_OUTPUT_CHARS:
+            kept = result[-_MAX_OUTPUT_CHARS:]
+            dropped = len(result) - _MAX_OUTPUT_CHARS
+            result = f"[… {dropped} chars truncated from start]\n{kept}"
 
     except Exception as e:
         result = f"Error running command: {e}"

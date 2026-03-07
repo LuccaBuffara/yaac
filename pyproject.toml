@@ -12,7 +12,16 @@ dependencies = [
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.0",
     "pydantic>=2.0.0",
+    "halo>=0.0.31",
 ]
+
+[project.optional-dependencies]
+openai   = ["pydantic-ai[openai]>=0.0.20"]
+google   = ["pydantic-ai[google]>=0.0.20"]
+groq     = ["pydantic-ai[groq]>=0.0.20"]
+mistral  = ["pydantic-ai[mistral]>=0.0.20"]
+ollama   = ["pydantic-ai[openai]>=0.0.20"]
+all      = ["pydantic-ai[openai,google,groq,mistral]>=0.0.20"]
 
 [project.scripts]
 helena = "helena.main:main"

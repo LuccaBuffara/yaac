@@ -6,12 +6,17 @@ import asyncio
 import os
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
 from pydantic import BaseModel
-from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai import Agent, Tool
+from pydantic_ai.usage import UsageLimits
+
+from .config import resolve_model
+
+_UNLIMITED = UsageLimits(request_limit=None)
 from rich.live import Live
 from rich.panel import Panel
 from rich.rule import Rule
@@ -20,13 +25,13 @@ from rich.table import Table
 from rich.text import Text
 
 from .tool_events import set_handler, reset_handler
-from .ui import console
+from .ui import console, print_beast_banner
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-WORKER_TIMEOUT = 300   # seconds before a stuck agent is cancelled
+WORKER_TIMEOUT = 3600  # seconds before a stuck agent is cancelled
 _MAX_LOG = 100         # max tool-call log entries kept per worker
 
 
@@ -112,19 +117,44 @@ Do NOT ask questions if:
 Return an empty questions list to proceed without asking anything.
 """
 
+_RESEARCHER_SYSTEM = """\
+You are a file search specialist for Beast Mode in Helena Code.
+Your ONLY job is to explore files in the working directory and return a findings report.
+
+=== SCOPE: FILES ONLY ===
+- Explore ONLY inside the working directory provided. Never go above it.
+- Use ONLY these tools: `list_directory`, `glob_search`, `grep_search`, `read_file`.
+- Do NOT run any shell commands. Do NOT check for installed tools, runtimes, or libraries.
+- Do NOT check node, python, pip, npm, or any system-level state.
+- Do NOT read files outside the working directory.
+
+=== STRATEGY ===
+- Start with `list_directory` on the working directory to get a map.
+- Use `glob_search` and `grep_search` to locate relevant files rather than reading broadly.
+- Read only files clearly relevant to the task.
+- Make parallel tool calls wherever possible to go faster.
+- Return absolute file paths in your report.
+
+=== OUTPUT ===
+Return a concise findings report covering:
+1. Project structure overview (key directories and files)
+2. Files directly relevant to the task (with paths and brief description of their contents)
+3. Specific symbols, functions, or patterns the worker agents need to know
+"""
+
 _ORCHESTRATOR_SYSTEM = """\
 You are the Beast Mode Orchestrator for Helena Code, a multi-agent coding assistant.
 
-Your job: analyze the user's task and decompose it into a set of PARALLEL, INDEPENDENT
-subtasks that can be executed concurrently by separate coding agents.
+A researcher has already explored the codebase and provided findings below.
+Your ONLY job is to decompose the task into a parallel execution plan.
+Do NOT explore the codebase — all the information you need is in the research findings.
 
 Rules:
 - Each subtask must be self-contained and independently executable WITHOUT relying on
   the output of any other subtask.
-- Each subtask must be a complete, unambiguous instruction a coding agent can execute
-  without additional context.
+- Each subtask must be a complete, unambiguous instruction including specific file paths,
+  function names, and constraints taken from the research findings.
 - Aim for 2–5 subtasks. Never more than 6.
-- Include all necessary context (file paths, goals, constraints) in each subtask.
 - goal: a single sentence describing the overall objective.
 """
 
@@ -159,6 +189,7 @@ def _render_dashboard(
     grid.add_column(width=8)   # elapsed
 
     # Orchestrator row
+    orch_selected = (selected_id == 0)
     if phase == "planning":
         orch_icon: object = Spinner("dots").render(time.monotonic())
         orch_style = "bold yellow"
@@ -169,10 +200,16 @@ def _render_dashboard(
         orch_icon = Text("◉", style="bold cyan")
         orch_style = "bold cyan"
 
+    if orch_selected:
+        orch_label: object = Text(" Orchestrator ", style="bold white on dark_orange")
+    else:
+        orch_label = Text("Orchestrator", style=orch_style)
+
+    action_style = "dim yellow" if phase == "planning" else "dim"
     grid.add_row(
         orch_icon,
-        Text("Orchestrator", style=orch_style),
-        Text(orchestrator_status, style="dim"),
+        orch_label,
+        Text(orchestrator_status[:70], style=action_style),
         Text(f"{elapsed:.1f}s", style="dim cyan"),
     )
 
@@ -214,10 +251,13 @@ def _render_dashboard(
 
         grid.add_row(icon, label, detail, Text(f"{t:.1f}s" if t else "", style="dim cyan"))
 
-    # Key hint (shown once agents exist)
-    if workers and phase not in ("planning",):
+    # Key hint
+    if phase == "planning":
+        hint = "  Press o to inspect orchestrator"
+        grid.add_row("", "", Text(hint, style="dim"), "")
+    elif workers:
         n = len(workers)
-        hint = f"  Press 1–{n} to inspect  ·  i to interrupt  ·  0 to close"
+        hint = f"  Press o / 1–{n} to inspect  ·  i to interrupt  ·  0 to close"
         grid.add_row("", "", Text(hint, style="dim"), "")
 
     title = Text.assemble(
@@ -257,6 +297,29 @@ def _render_detail(worker: WorkerState) -> Panel:
         (f" Agent-{worker.id} ", "bold white on dark_orange"),
         ("  ", ""),
         (st, _STATUS_STYLE[st]),
+        (close_hint, "dim"),
+    )
+    return Panel(RGroup(*parts), title=title, border_style="dark_orange", padding=(0, 1))
+
+
+def _render_orch_detail(orch_log: list[str], phase: str) -> Panel:
+    """Expanded detail panel for the orchestrator (exploration log)."""
+    from rich.console import Group as RGroup
+
+    parts: list = []
+    if orch_log:
+        parts.append(Text("Exploration log:", style="bold dim"))
+        for entry in orch_log[-30:]:
+            style = "dim yellow" if entry.startswith("⚙") else "dim green"
+            parts.append(Text(f"  {entry}", style=style))
+    else:
+        parts.append(Text("  Waiting for orchestrator to start...", style="dim"))
+
+    close_hint = "  ·  press 0 or o to close"
+    title = Text.assemble(
+        (" Orchestrator ", "bold white on dark_orange"),
+        ("  ", ""),
+        (phase.upper(), "bold yellow" if phase == "planning" else "bold cyan"),
         (close_hint, "dim"),
     )
     return Panel(RGroup(*parts), title=title, border_style="dark_orange", padding=(0, 1))
@@ -316,12 +379,15 @@ async def _read_keys(
                 ch = await asyncio.wait_for(key_queue.get(), timeout=0.1)
                 if ch == "0":
                     selected_id[0] = None
+                elif ch in ("o", "O"):
+                    # Toggle orchestrator detail (id=0 means orchestrator)
+                    selected_id[0] = None if selected_id[0] == 0 else 0
                 elif ch.isdigit():
                     n = int(ch)
                     if 1 <= n <= n_workers:
                         selected_id[0] = n
                 elif ch in ("i", "I"):
-                    if selected_id[0] is not None:
+                    if selected_id[0] is not None and selected_id[0] != 0:
                         await interrupt_queue.put(selected_id[0])
                 elif ch in ("\x1b", "q"):
                     selected_id[0] = None
@@ -344,23 +410,62 @@ async def _read_keys(
 async def _ask_clarifications(task: str, model_name: str) -> list[str]:
     """Return a list of clarifying questions (may be empty)."""
     agent: Agent[None, Clarification] = Agent(
-        model=AnthropicModel(model_name),
+        model=resolve_model(model_name),
         system_prompt=_CLARIFICATION_SYSTEM,
         output_type=Clarification,
     )
-    result = await agent.run(task)
+    result = await agent.run(task, usage_limits=_UNLIMITED)
     return result.output.questions
 
 
-async def _plan(task: str, model_name: str) -> Plan:
-    """Ask the orchestrator to decompose the task into a parallel plan."""
+async def _research(task: str, cwd: str, model_name: str) -> str:
+    """Run the read-only researcher agent and return a findings report."""
+    from .tools import read_file, list_directory, glob_search, grep_search
+
+    researcher: Agent[None, str] = Agent(
+        model=resolve_model(model_name),
+        system_prompt=_RESEARCHER_SYSTEM,
+        tools=[
+            Tool(read_file, max_retries=0),
+            Tool(list_directory, max_retries=0),
+            Tool(glob_search, max_retries=0),
+            Tool(grep_search, max_retries=0),
+        ],
+    )
+    result = await researcher.run(f"Working directory: {cwd}\n\nTask to research:\n{task}", usage_limits=_UNLIMITED)
+    return result.output
+
+
+async def _plan_from_findings(task: str, cwd: str, findings: str, model_name: str) -> Plan:
+    """Tool-free orchestrator: receives research findings and produces a parallel plan."""
     orchestrator: Agent[None, Plan] = Agent(
-        model=AnthropicModel(model_name),
+        model=resolve_model(model_name),
         system_prompt=_ORCHESTRATOR_SYSTEM,
         output_type=Plan,
     )
-    result = await orchestrator.run(task)
+    prompt = (
+        f"Working directory: {cwd}\n\n"
+        f"## Task\n{task}\n\n"
+        f"## Research Findings\n{findings}"
+    )
+    result = await orchestrator.run(prompt, usage_limits=_UNLIMITED)
     return result.output
+
+
+async def _research_and_plan(
+    task: str,
+    cwd: str,
+    model_name: str,
+    on_status: "Callable[[str], None] | None" = None,
+) -> Plan:
+    """Run researcher then planner and return the execution plan."""
+    if on_status:
+        on_status("Researcher exploring codebase...")
+    findings = await _research(task, cwd, model_name)
+
+    if on_status:
+        on_status("Creating execution plan...")
+    return await _plan_from_findings(task, cwd, findings, model_name)
 
 
 async def _run_worker(worker: WorkerState, model_name: str) -> None:
@@ -389,7 +494,7 @@ async def _run_worker(worker: WorkerState, model_name: str) -> None:
     token = set_handler(_on_event)
     try:
         agent = create_agent(model_name)
-        result = await asyncio.wait_for(agent.run(worker.task), timeout=WORKER_TIMEOUT)
+        result = await asyncio.wait_for(agent.run(worker.task, usage_limits=_UNLIMITED), timeout=WORKER_TIMEOUT)
         worker.result = result.output
         worker.status = TaskStatus.DONE
     except asyncio.TimeoutError:
@@ -409,14 +514,14 @@ async def _run_worker(worker: WorkerState, model_name: str) -> None:
 async def _synthesize(goal: str, workers: list[WorkerState], model_name: str) -> str:
     """Ask the synthesis agent to produce a final summary."""
     synthesizer: Agent[None, str] = Agent(
-        model=AnthropicModel(model_name),
+        model=resolve_model(model_name),
         system_prompt=_SYNTHESIS_SYSTEM,
     )
     sections = "\n\n".join(
         f"## Agent-{w.id}: {w.task}\n\nStatus: {w.status.value}\n\n{w.result}"
         for w in workers
     )
-    result = await synthesizer.run(f"Overall goal: {goal}\n\n{sections}")
+    result = await synthesizer.run(f"Overall goal: {goal}\n\n{sections}", usage_limits=_UNLIMITED)
     return result.output
 
 
@@ -534,18 +639,20 @@ async def run_beast_mode(task: str, model_name: str) -> str:
     from rich.console import Group as RGroup
     from rich.markdown import Markdown
 
-    # ── Phase 0: Clarification (interactive, before Live) ───────────────────
-    console.print()
+    # ── Phase 0: Banner + Clarification (interactive, before Live) ──────────
+    print_beast_banner()
     console.print(Text("  Checking whether clarification is needed...", style="dim"))
     questions = await _ask_clarifications(task, model_name)
     clarification_ctx = _run_clarification_qa(questions)
-    full_task = task + clarification_ctx
+    cwd = os.getcwd()
+    full_task = f"Working directory: {cwd}\n\n{task}{clarification_ctx}"
 
     # ── Live display setup ───────────────────────────────────────────────────
     start_time = time.monotonic()
     workers: list[WorkerState] = []
     phase = "planning"
-    orchestrator_status = "Analyzing task and creating execution plan..."
+    orchestrator_status = "Exploring codebase and creating execution plan..."
+    orch_log: list[str] = []
     goal = task[:70]
     synthesis = ""
     selected_id: list[int | None] = [None]
@@ -561,8 +668,11 @@ async def run_beast_mode(task: str, model_name: str) -> str:
             dashboard = _render_dashboard(
                 goal, workers, phase, elapsed, orchestrator_status, selected_id[0]
             )
-            if selected_id[0] is not None:
-                w = next((w for w in workers if w.id == selected_id[0]), None)
+            sid = selected_id[0]
+            if sid == 0:
+                live.update(RGroup(dashboard, _render_orch_detail(orch_log, phase)))
+            elif sid is not None:
+                w = next((w for w in workers if w.id == sid), None)
                 live.update(RGroup(dashboard, _render_detail(w)) if w else dashboard)
             else:
                 live.update(dashboard)
@@ -581,8 +691,33 @@ async def run_beast_mode(task: str, model_name: str) -> str:
         ))
 
         try:
-            # ── Phase 1: Plan ────────────────────────────────────────────────
-            plan = await _plan(full_task, model_name)
+            # ── Phase 1: Plan (with live orchestrator activity feed) ─────────
+            def _on_orch_event(event_type: str, tool_name: str, data: dict | str) -> None:
+                nonlocal orchestrator_status
+                if event_type == "call" and isinstance(data, dict):
+                    arg_str = ", ".join(f"{k}={repr(v)[:35]}" for k, v in data.items())
+                    entry = f"⚙ {tool_name}({arg_str})"
+                    orchestrator_status = entry[:70]
+                    orch_log.append(entry)
+                    if len(orch_log) > _MAX_LOG:
+                        orch_log.pop(0)
+                elif event_type == "return":
+                    preview = str(data)[:100].replace("\n", " ")
+                    entry = f"← {tool_name}: {preview}"
+                    orchestrator_status = f"← {tool_name}"
+                    orch_log.append(entry)
+                    if len(orch_log) > _MAX_LOG:
+                        orch_log.pop(0)
+
+            def _update_orch_status(s: str) -> None:
+                nonlocal orchestrator_status
+                orchestrator_status = s
+
+            orch_token = set_handler(_on_orch_event)
+            try:
+                plan = await _research_and_plan(full_task, cwd, model_name, on_status=_update_orch_status)
+            finally:
+                reset_handler(orch_token)
             goal = plan.goal[:70]
             orchestrator_status = f"Plan ready · spawning {len(plan.subtasks)} agents"
             phase = "executing"

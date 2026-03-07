@@ -1,5 +1,6 @@
 venv/
 .helena/
+.claude/
 __pycache__/
 
 todo-next/

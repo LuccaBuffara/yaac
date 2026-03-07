@@ -2,7 +2,12 @@
 
 from pathlib import Path
 
+from pydantic_ai.usage import UsageLimits
+
 from ..tool_events import emit_call, emit_return
+from ..utils import retry_async
+
+_UNLIMITED = UsageLimits(request_limit=None)
 
 
 async def spawn_subagent(
@@ -10,18 +15,12 @@ async def spawn_subagent(
     profile: str | None = None,
     context: str | None = None,
 ) -> str:
-    """Spawn an independent subagent to handle a focused subtask.
-
-    The subagent has access to all the same tools and runs the full agentic
-    loop to completion before returning its result. Use this to delegate
-    parallelizable work, isolate a complex subtask, or use a specialized
-    agent profile.
+    """Spawn an independent subagent with a fresh context to handle a focused subtask.
 
     Args:
-        task: The task description for the subagent.
-        profile: Optional agent profile name from .helena/agents/ to specialize
-                 the subagent's behavior.
-        context: Optional extra context to prepend to the task.
+        task: The subtask description.
+        profile: Optional profile name from .helena/agents/ for a specialized persona.
+        context: Optional extra context prepended to the task.
 
     Returns:
         The subagent's final response.
@@ -33,7 +32,7 @@ async def spawn_subagent(
 
     system_prompt_addition = _load_profile(profile) if profile else ""
     subagent = create_agent(system_prompt_addition=system_prompt_addition)
-    result = await subagent.run(full_task)
+    result = await retry_async(subagent.run, full_task, usage_limits=_UNLIMITED, max_attempts=3)
     response = result.output
 
     emit_return("spawn_subagent", response)

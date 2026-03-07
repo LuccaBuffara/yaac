@@ -1,9 +1,12 @@
 """File operation tools for Helena Code."""
 
 import asyncio
+import os
+import re
+import tempfile
 from pathlib import Path
 
-from ..tool_events import emit_call, emit_return
+from ..tool_events import emit_call, emit_return, emit_diff
 
 
 async def read_file(path: str, offset: int = 1, limit: int = 2000) -> str:
@@ -40,22 +43,40 @@ async def write_file(path: str, content: str) -> str:
 
 
 async def edit_file(path: str, old_string: str, new_string: str) -> str:
-    """Edit a file by replacing an exact string match.
-
-    The old_string must match exactly (including whitespace/indentation).
-    For new files, use write_file instead.
+    """Replace an exact string match in a file (must be unique).
+    Whitespace/indentation must match exactly. Use write_file for new files.
 
     Args:
-        path: Absolute or relative path to the file.
-        old_string: The exact string to find and replace.
-        new_string: The string to replace it with.
+        path: Path to the file.
+        old_string: Exact string to find (must appear exactly once).
+        new_string: Replacement string.
 
     Returns:
         Success or error message.
     """
     emit_call("edit_file", {"path": path})
-    result = await asyncio.to_thread(_edit_file_sync, path, old_string, new_string)
+    result, old_str, new_str = await asyncio.to_thread(_edit_file_sync, path, old_string, new_string)
+    if old_str is not None:
+        emit_diff(path, old_str, new_str)
     emit_return("edit_file", result)
+    return result
+
+
+async def patch_file(path: str, diff: str) -> str:
+    """Apply a unified diff (@@ hunks) to a file. Token-efficient alternative to
+    edit_file for multi-location changes — only changed lines + context needed.
+    --- / +++ headers are optional.
+
+    Args:
+        path: Path to the file.
+        diff: Unified diff string (one or more @@ hunks).
+
+    Returns:
+        Success or error message.
+    """
+    emit_call("patch_file", {"path": path})
+    result = await asyncio.to_thread(_patch_file_sync, path, diff)
+    emit_return("patch_file", result)
     return result
 
 
@@ -113,11 +134,11 @@ def _write_file_sync(path: str, content: str) -> str:
         return f"Error writing file: {e}"
 
 
-def _edit_file_sync(path: str, old_string: str, new_string: str) -> str:
+def _edit_file_sync(path: str, old_string: str, new_string: str) -> tuple[str, str | None, str | None]:
     file_path = Path(path).expanduser().resolve()
 
     if not file_path.exists():
-        return f"Error: File not found: {path}"
+        return f"Error: File not found: {path}", None, None
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
@@ -125,17 +146,124 @@ def _edit_file_sync(path: str, old_string: str, new_string: str) -> str:
 
         count = content.count(old_string)
         if count == 0:
-            return f"Error: String not found in {path}. Make sure the string matches exactly."
+            return f"Error: String not found in {path}. Make sure the string matches exactly.", None, None
         if count > 1:
-            return f"Error: Found {count} matches in {path}. Provide more context to make it unique."
+            return f"Error: Found {count} matches in {path}. Provide more context to make it unique.", None, None
 
         new_content = content.replace(old_string, new_string, 1)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(new_content)
 
-        return f"Successfully edited {file_path}"
+        return f"Successfully edited {file_path}", old_string, new_string
     except Exception as e:
-        return f"Error editing file: {e}"
+        return f"Error editing file: {e}", None, None
+
+
+def _patch_file_sync(path: str, diff: str) -> str:
+    import subprocess
+
+    file_path = Path(path).expanduser().resolve()
+    if not file_path.exists():
+        return f"Error: File not found: {path}"
+
+    # Ensure the diff has the --- / +++ header lines that `patch` requires to
+    # recognise unified format.  We use placeholder names; the actual target
+    # file is passed as a positional argument so patch ignores the header paths.
+    stripped = diff.lstrip()
+    if not stripped.startswith("---"):
+        diff = f"--- a\n+++ b\n{stripped}"
+
+    patch_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".patch", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(diff)
+            patch_path = f.name
+
+        result = subprocess.run(
+            ["patch", "--forward", str(file_path), patch_path],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return f"Successfully patched {file_path}"
+        # patch writes useful detail to stdout on failure
+        detail = (result.stdout or result.stderr or "").strip()
+        return f"Error applying patch: {detail}"
+    except FileNotFoundError:
+        # `patch` not available — fall back to pure-Python hunk applier
+        return _apply_hunks_python(file_path, diff)
+    except Exception as exc:
+        return f"Error applying patch: {exc}"
+    finally:
+        if patch_path:
+            try:
+                os.unlink(patch_path)
+            except Exception:
+                pass
+
+
+def _apply_hunks_python(file_path: Path, diff: str) -> str:
+    """Pure-Python fallback unified-diff applier (no subprocess required)."""
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except Exception as exc:
+        return f"Error reading file: {exc}"
+
+    hunk_header = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+    diff_lines = diff.splitlines()
+
+    # Collect hunks: list of (old_start_0idx, old_lines, new_lines)
+    hunks: list[tuple[int, list[str], list[str]]] = []
+    i = 0
+    while i < len(diff_lines):
+        m = hunk_header.match(diff_lines[i])
+        if not m:
+            i += 1
+            continue
+        old_start = int(m.group(1)) - 1  # convert to 0-indexed
+        i += 1
+        old_part: list[str] = []
+        new_part: list[str] = []
+        while i < len(diff_lines) and not hunk_header.match(diff_lines[i]):
+            hl = diff_lines[i]
+            if hl.startswith("-"):
+                old_part.append(hl[1:])
+            elif hl.startswith("+"):
+                new_part.append(hl[1:])
+            elif hl.startswith(" "):
+                old_part.append(hl[1:])
+                new_part.append(hl[1:])
+            # skip "\ No newline at end of file" and header lines
+            i += 1
+        hunks.append((old_start, old_part, new_part))
+
+    if not hunks:
+        return "Error: No valid @@ hunks found in diff."
+
+    # Apply in reverse so earlier line-number changes don't shift later hunks
+    for old_start, old_part, new_part in reversed(hunks):
+        def _ensure_nl(s: str) -> str:
+            return s if s.endswith("\n") else s + "\n"
+
+        old_with_nl = [_ensure_nl(l) for l in old_part]
+        new_with_nl = [_ensure_nl(l) for l in new_part]
+        end = old_start + len(old_with_nl)
+        if lines[old_start:end] != old_with_nl:
+            return (
+                f"Error: Hunk at line {old_start + 1} does not match file contents. "
+                "Make sure context lines are correct."
+            )
+        lines[old_start:end] = new_with_nl
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        return f"Successfully patched {file_path}"
+    except Exception as exc:
+        return f"Error writing patched file: {exc}"
 
 
 def _list_directory_sync(path: str) -> str:
