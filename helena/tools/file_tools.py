@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..tool_events import emit_call, emit_return, emit_patch
 from ..lsp.client import SEVERITY
+from ..lsp.client import LANGUAGE_IDS
 
 
 async def _lsp_diagnostics_suffix(path: str) -> str:
@@ -88,7 +89,8 @@ async def update_file(path: str, diff: str) -> str:
     emit_call("update_file", {"path": path})
     result = await asyncio.to_thread(_update_file_sync, path, diff)
     if result.startswith("Successfully"):
-        emit_patch(path, diff)
+        language = LANGUAGE_IDS.get(Path(path).suffix.lower())
+        emit_patch(path, diff, language=language)
         result += await _lsp_diagnostics_suffix(path)
     emit_return("update_file", result)
     return result

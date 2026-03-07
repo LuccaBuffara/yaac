@@ -7,7 +7,7 @@ Follows the agentskills.io open format:
 
 Discovery paths (in priority order):
   Project-level:  <cwd>/.helena/skills/  |  <cwd>/.agents/skills/  |  <cwd>/skills/
-  User-level:     ~/.helena/skills/       |  ~/.agents/skills/
+  User-level:     ~/.helena/skills/       |  ~/.claude/skills/      |  ~/.agents/skills/
 """
 
 from __future__ import annotations
@@ -45,6 +45,7 @@ def _scan_dirs() -> list[Path]:
         cwd / ".agents" / "skills",
         cwd / "skills",
         home / ".helena" / "skills",
+        home / ".claude" / "skills",
         home / ".agents" / "skills",
     ]
 

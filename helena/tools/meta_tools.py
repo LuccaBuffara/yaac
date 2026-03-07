@@ -9,7 +9,7 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
 
 
 async def create_skill(name: str, description: str, instructions: str) -> str:
-    """Persist a new skill to ~/.helena/skills/ so it's available in all future sessions.
+    """Persist a new skill to ~/.helena/skills/ so it's available in all future sessions and auto-discovered locations.
 
     Args:
         name: Lowercase alphanumeric with hyphens (e.g. 'deploy-aws').

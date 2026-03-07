@@ -255,7 +255,7 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
             spinner.start()
         elif event_type == "patch" and isinstance(data, dict):
             spinner.stop()
-            _print_patch(tool_name, data["diff"])
+            _print_patch(tool_name, data["diff"], data.get("language"))
             spinner.start()
         elif event_type == "return":
             lines = str(data).splitlines()
@@ -370,16 +370,15 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
 
 
 
-def _print_patch(path: str, diff: str) -> None:
+def _print_patch(path: str, diff: str, language: str | None = None) -> None:
     from rich.syntax import Syntax
     from rich.panel import Panel as RPanel
 
     filename = path.split("/")[-1]
-    syntax = Syntax(
-        diff.strip(), "diff",
-        theme="monokai", line_numbers=True,
-        background_color="default", word_wrap=True,
-    )
+    diff_text = diff.strip()
+    fence = f"```{language}" if language else "```"
+    rendered = f"{fence}\n{diff_text}\n```"
+    syntax = Syntax(rendered, "markdown", theme="monokai", line_numbers=True, background_color="default", word_wrap=True)
     console.print(RPanel(
         syntax,
         title=f"[cyan]~ patch[/cyan]  [dim]{filename}[/dim]",
