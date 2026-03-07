@@ -95,13 +95,28 @@ def _parse_checklist(text: str) -> list[dict[str, str]]:
     return todos
 
 
-async def create_skill(name: str, description: str, instructions: str) -> str:
+async def create_skill(
+    name: str,
+    description: str,
+    instructions: str,
+    files: dict[str, str] | None = None,
+) -> str:
     """Persist a new skill to ~/.yaac/skills/ so it's available in all future sessions and auto-discovered locations.
+
+    A skill is a folder containing SKILL.md plus any bundled resources (scripts,
+    templates, reference docs, examples) that help the agent execute the skill.
+    Use the `files` parameter to create sub-files inside the skill directory so
+    the agent can read and run them when the skill is activated.
 
     Args:
         name: Lowercase alphanumeric with hyphens (e.g. 'deploy-aws').
         description: One-line description shown in the catalog.
         instructions: Full instructions in Markdown format.
+        files: Optional mapping of relative path → file content for bundled
+            resources.  Paths must be relative (e.g. 'scripts/setup.sh',
+            'templates/config.yaml', 'examples/demo.py').  Directories are
+            created automatically.  SKILL.md is always written from the
+            `instructions` argument and must NOT appear here.
 
     Returns:
         Success or error message.
@@ -113,6 +128,19 @@ async def create_skill(name: str, description: str, instructions: str) -> str:
         emit_return("create_skill", result)
         return result
 
+    # Validate bundled file paths
+    if files:
+        for rel_path in files:
+            p = Path(rel_path)
+            if p.is_absolute():
+                result = f"Error: bundled file path must be relative, got '{rel_path}'."
+                emit_return("create_skill", result)
+                return result
+            if p.name == "SKILL.md" and str(p) == "SKILL.md":
+                result = "Error: 'SKILL.md' must not appear in `files`; use the `instructions` argument instead."
+                emit_return("create_skill", result)
+                return result
+
     skill_dir = Path.home() / ".yaac" / "skills" / name
     skill_file = skill_dir / "SKILL.md"
 
@@ -121,11 +149,23 @@ async def create_skill(name: str, description: str, instructions: str) -> str:
         content = f"---\nname: {name}\ndescription: {description}\n---\n\n{instructions}\n"
         skill_file.write_text(content, encoding="utf-8")
 
+        # Write bundled resources
+        created_files: list[str] = []
+        if files:
+            for rel_path, file_content in files.items():
+                target = skill_dir / rel_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(file_content, encoding="utf-8")
+                created_files.append(rel_path)
+
         # Reload the registry so the skill is immediately available
         from ..skills import init_skills
         init_skills()
 
-        result = f"Skill '{name}' created at {skill_file} and loaded into the catalog."
+        extra = ""
+        if created_files:
+            extra = f" Bundled {len(created_files)} file(s): {', '.join(created_files)}."
+        result = f"Skill '{name}' created at {skill_file} and loaded into the catalog.{extra}"
     except Exception as e:
         result = f"Error creating skill: {e}"
 

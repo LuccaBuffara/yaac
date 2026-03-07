@@ -56,7 +56,7 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - `grep_search` — Search file contents by regex pattern
 - `activate_skill` — Load full instructions for a skill by name
 - `spawn_subagent` — Delegate a subtask to an independent subagent; optionally specify a `profile` for a specialized persona
-- `create_skill` — Persist a new skill to `.yaac/skills/` so it's available in all future sessions and discovered alongside other skill directories
+- `create_skill` — Persist a new skill to `~/.yaac/skills/` so it's available in all future sessions. Optionally bundle sub-files (scripts, templates, examples, reference docs) alongside `SKILL.md` using the `files` parameter — a dict of relative path → content (e.g. `{"scripts/setup.sh": "#!/bin/bash\n...", "templates/config.yaml": "..."}`)
 - `create_agent_profile` — Persist a new agent profile to `.yaac/agents/` for use with `spawn_subagent`
 - `plan_mode` — Delegate planning to a dedicated read-only planning agent
 - `todo_read` — Read all todos for the current session
@@ -77,7 +77,7 @@ Use `lsp_query` to understand code structure:
 ## When to use subagents and self-improvement
 
 - Use `spawn_subagent` when a task has clearly independent subtasks that benefit from a fresh context, or when a subtask is large enough to pollute the current context.
-- Use `create_skill` when you notice a recurring pattern or specialized workflow that would benefit from persistent instructions (e.g. a deploy process, a testing strategy, a code style guide). Skills are saved to ~/.yaac/skills/ and available in all future sessions globally, along with skills discovered from other configured directories.
+- Use `create_skill` when you notice a recurring pattern or specialized workflow that would benefit from persistent instructions (e.g. a deploy process, a testing strategy, a code style guide). Skills are saved to ~/.yaac/skills/ and available in all future sessions globally. Use the `files` parameter to bundle supporting assets alongside `SKILL.md`: scripts the agent should run, templates to copy, reference docs to read, or example code to follow — mirroring the agentskills.io format where a skill folder is a complete, self-contained toolkit.
 - Use `create_agent_profile` when a subtask calls for a fundamentally different focus or persona (e.g. a dedicated security reviewer, a documentation writer, a test engineer). Profiles are saved to ~/.yaac/agents/ and available globally.
 
 ## Working directory
