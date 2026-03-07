@@ -22,16 +22,16 @@ Runs in your terminal, reads and edits your files, executes commands — like Cl
 
 ## Installation
 
-### Global install from GitHub
+### Install from PyPI
 
 ```bash
-pip install "git+https://github.com/LuccaBuffara/yaac.git"
+pip install yaacai
 ```
 
 ### Update
 
 ```bash
-pip install --upgrade --force-reinstall "git+https://github.com/LuccaBuffara/yaac.git"
+pip install --upgrade yaacai
 ```
 
 ### Local / development install
