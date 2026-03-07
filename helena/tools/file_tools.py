@@ -1,9 +1,7 @@
 """File operation tools for Helena Code."""
 
 import asyncio
-import os
 import re
-import tempfile
 from pathlib import Path
 
 from ..tool_events import emit_call, emit_return, emit_patch
@@ -146,52 +144,14 @@ def _write_file_sync(path: str, content: str) -> str:
 
 
 def _update_file_sync(path: str, diff: str) -> str:
-    import subprocess
-
     file_path = Path(path).expanduser().resolve()
     if not file_path.exists():
         return f"Error: File not found: {path}"
-
-    # Ensure the diff has the --- / +++ header lines that `patch` requires to
-    # recognise unified format.  We use placeholder names; the actual target
-    # file is passed as a positional argument so patch ignores the header paths.
-    stripped = diff.lstrip()
-    if not stripped.startswith("---"):
-        diff = f"--- a\n+++ b\n{stripped}"
-
-    patch_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".patch", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(diff)
-            patch_path = f.name
-
-        result = subprocess.run(
-            ["patch", "--forward", str(file_path), patch_path],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return f"Successfully patched {file_path}"
-        # patch writes useful detail to stdout on failure
-        detail = (result.stdout or result.stderr or "").strip()
-        return f"Error applying patch: {detail}"
-    except FileNotFoundError:
-        # `patch` not available — fall back to pure-Python hunk applier
-        return _apply_hunks_python(file_path, diff)
-    except Exception as exc:
-        return f"Error applying patch: {exc}"
-    finally:
-        if patch_path:
-            try:
-                os.unlink(patch_path)
-            except Exception:
-                pass
+    return _apply_hunks_python(file_path, diff)
 
 
 def _apply_hunks_python(file_path: Path, diff: str) -> str:
-    """Pure-Python fallback unified-diff applier (no subprocess required)."""
+    """Pure-Python unified-diff applier with fuzzy position search."""
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
@@ -229,20 +189,38 @@ def _apply_hunks_python(file_path: Path, diff: str) -> str:
     if not hunks:
         return "Error: No valid @@ hunks found in diff."
 
+    def _ensure_nl(s: str) -> str:
+        return s if s.endswith("\n") else s + "\n"
+
+    def _norm(s: str) -> str:
+        return s.rstrip("\r\n")
+
+    def _find_position(file_lines: list[str], old_part: list[str], hint: int, radius: int = 50) -> int:
+        """Return 0-indexed position where old_part matches, searching near hint. Returns -1 if not found."""
+        n = len(old_part)
+        old_norm = [_norm(l) for l in old_part]
+        lo = max(0, hint - radius)
+        hi = min(len(file_lines) - n, hint + radius)
+        # Check exact hint first, then spiral outward
+        candidates = [hint] + [hint + d for r in range(1, radius + 1) for d in (-r, r)]
+        for pos in candidates:
+            if lo <= pos <= hi:
+                if [_norm(file_lines[pos + j]) for j in range(n)] == old_norm:
+                    return pos
+        return -1
+
     # Apply in reverse so earlier line-number changes don't shift later hunks
     for old_start, old_part, new_part in reversed(hunks):
-        def _ensure_nl(s: str) -> str:
-            return s if s.endswith("\n") else s + "\n"
-
         old_with_nl = [_ensure_nl(l) for l in old_part]
         new_with_nl = [_ensure_nl(l) for l in new_part]
-        end = old_start + len(old_with_nl)
-        if lines[old_start:end] != old_with_nl:
+
+        pos = _find_position(lines, old_with_nl, old_start)
+        if pos == -1:
             return (
-                f"Error: Hunk at line {old_start + 1} does not match file contents. "
-                "Make sure context lines are correct."
+                f"Error: Hunk at line {old_start + 1} does not match file contents "
+                f"(searched ±50 lines). Make sure context lines are correct."
             )
-        lines[old_start:end] = new_with_nl
+        lines[pos:pos + len(old_with_nl)] = new_with_nl
 
     try:
         with open(file_path, "w", encoding="utf-8") as f:

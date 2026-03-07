@@ -10,6 +10,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 
+from pydantic_ai.messages import PartStartEvent, PartDeltaEvent, TextPartDelta, ToolCallPart
 from pydantic_ai.usage import UsageLimits
 from .agent import create_agent
 from .config import (
@@ -270,25 +271,30 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
             async for node in run:
                 if _PydanticAgent.is_model_request_node(node):
                     turn_text = ""
-                    first_chunk = True
                     async with node.stream(run.ctx) as stream:
-                        async for chunk in stream.stream_text(delta=True):
-                            if first_chunk:
+                        async for event in stream:
+                            if isinstance(event, PartStartEvent) and isinstance(event.part, ToolCallPart):
+                                # Model finished text and started generating tool-call args.
+                                # Show which tool is being built so the terminal never looks frozen.
+                                if streaming_active:
+                                    sys.stdout.write("\n")
+                                    sys.stdout.flush()
+                                    streaming_active = False
                                 spinner.stop()
-                                streaming_active = True
-                                first_chunk = False
-                            turn_text += chunk
-                            sys.stdout.write(chunk)
-                            sys.stdout.flush()
-                        # Text chunks exhausted; model may still be generating
-                        # tool call arguments (e.g. a large patch diff).
-                        # Restart the spinner so the terminal doesn't go blank.
+                                spinner.text = f"building {event.part.tool_name} call..."
+                                spinner.start()
+                            elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+                                chunk = event.delta.content_delta
+                                if not streaming_active:
+                                    spinner.stop()
+                                    streaming_active = True
+                                turn_text += chunk
+                                sys.stdout.write(chunk)
+                                sys.stdout.flush()
                         if streaming_active:
                             sys.stdout.write("\n")
                             sys.stdout.flush()
                             streaming_active = False
-                        spinner.text = "generating..."
-                        spinner.start()
                     spinner.stop()
 
                 elif _PydanticAgent.is_call_tools_node(node):
