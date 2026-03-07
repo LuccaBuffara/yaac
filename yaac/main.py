@@ -1,6 +1,7 @@
 """YAAC (Yet Another Agentic Coder) - Main CLI entry point."""
 
 import os
+import shutil
 import sys
 import asyncio
 import time
@@ -349,11 +350,47 @@ async def run_session(model: str, beast_context: str = "") -> None:
                     env_hint = f"  Set it with: [cyan]/key <your-api-key>[/cyan]" if missing_key else ""
                     print_error(f"Authentication failed — check your API key.\n{env_hint}")
                 else:
-                    print_error(err_str)
+                    # Detect transient JSON/connection errors and offer auto-retry
+                    transient_hints = (
+                        "eof while parsing",
+                        "unexpected eof",
+                        "incomplete chunked read",
+                        "connection reset",
+                        "connection closed",
+                        "remoteprotocolerror",
+                        "readtimeout",
+                        "server disconnected",
+                    )
+                    is_transient = any(h in err_str.lower() for h in transient_hints)
+                    if is_transient:
+                        print_error(f"{err_str}\n  (transient connection/parsing failure — retrying automatically)")
+                        console.print()
+                        try:
+                            await _run_turn(agent, pending_input, message_history, model, session_cost, session_tokens)
+                            pending_input = ""
+                            continue
+                        except Exception as retry_err:
+                            print_error(f"Retry also failed: {retry_err}")
+                    else:
+                        print_error(err_str)
                 if os.environ.get("YAAC_DEBUG"):
                     import traceback
                     traceback.print_exc()
                 pending_input = ""
+
+
+def _erase_raw_streamed(text: str) -> None:
+    """Erase raw-streamed text from the terminal so it can be replaced with rendered Markdown."""
+    cols = shutil.get_terminal_size().columns or 80
+    visual_lines = 0
+    for line in text.split("\n"):
+        visual_lines += max(1, (len(line) + cols - 1) // cols) if line else 1
+    lines_up = visual_lines - 1
+    if lines_up > 0:
+        sys.stdout.write(f"\r\033[{lines_up}A\033[J")
+    else:
+        sys.stdout.write("\r\033[J")
+    sys.stdout.flush()
 
 
 async def _run_turn(agent: Any, user_input: str, message_history: list, model: str = "", session_cost: list[float] | None = None, session_tokens: list[int] | None = None) -> None:
@@ -412,6 +449,7 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                                 raise KeyboardInterrupt
                             if isinstance(event, PartStartEvent) and isinstance(event.part, ToolCallPart):
                                 if streaming_active:
+                                    _erase_raw_streamed(turn_text)
                                     console.print(Markdown(turn_text))
                                     turn_text = ""
                                     streaming_active = False
@@ -441,6 +479,7 @@ async def _run_turn(agent: Any, user_input: str, message_history: list, model: s
                                 turn_text += chunk
                         if streaming_active and turn_text:
                             spinner.stop()
+                            _erase_raw_streamed(turn_text)
                             console.print(Markdown(turn_text))
                             turn_text = ""
                         if streaming_active:
