@@ -144,6 +144,18 @@ def _estimate_history_tokens(message_history: list) -> int:
         return 0
 
 
+async def _run_shell_escape(command: str) -> None:
+    """Run a user shell command directly, streaming output to the terminal."""
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=None,
+        stderr=None,
+    )
+    await proc.wait()
+    if proc.returncode:
+        console.print(f"[dim]exit {proc.returncode}[/dim]")
+
+
 async def run_session(model: str, beast_context: str = "") -> None:
     from .session import init_session
     init_session()
@@ -211,6 +223,12 @@ async def run_session(model: str, beast_context: str = "") -> None:
         if user_input.lower() in ("exit", "quit", "bye"):
             console.print("[dim]Goodbye![/dim]")
             break
+
+        if user_input.startswith("!"):
+            shell_cmd = user_input[1:].strip()
+            if shell_cmd:
+                await _run_shell_escape(shell_cmd)
+            continue
 
         if user_input.lower() in ("/clear", "/reset"):
             clear_history()
@@ -508,6 +526,7 @@ def _print_help(skills: list[str]) -> None:
         "  [cyan]/model <id>[/cyan]     Switch model directly (e.g. [dim]openai:gpt-4o[/dim])\n"
         "  [cyan]/key[/cyan]            Show API key status for the current provider\n"
         "  [cyan]/key <value>[/cyan]    Set & save the API key for the current provider\n"
+        "  [cyan]!<cmd>[/cyan]          Run a shell command directly (e.g. [dim]!git status[/dim])\n"
         "  [cyan]i[/cyan]               Interrupt the current run and add more details\n"
         "  [cyan]/help[/cyan]           Show this help\n"
         "  [cyan]exit[/cyan]            Quit\n\n"
