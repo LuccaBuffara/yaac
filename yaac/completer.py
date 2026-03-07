@@ -125,15 +125,18 @@ def build_completer() -> NestedCompleter:
         for model in models
     }
     return NestedCompleter.from_nested_dict({
-        "/help":   None,
-        "/clear":  None,
-        "/reset":  None,
-        "/skills": None,
-        "/key":    None,
-        "/model":  model_completions,
-        "exit":    None,
-        "quit":    None,
-        "bye":     None,
+        "/help":    None,
+        "/clear":   None,
+        "/reset":   None,
+        "/skills":  None,
+        "/key":     None,
+        "/model":   model_completions,
+        "/stats":   None,
+        "/compact": None,
+        "/banner":  None,
+        "exit":     None,
+        "quit":     None,
+        "bye":      None,
     })
 
 
@@ -173,6 +176,12 @@ def get_toolbar() -> HTML:
         )
     elif text.startswith("/clear") or text.startswith("/reset"):
         left = "  <b>/clear</b>  ·  wipe conversation history"
+    elif text.startswith("/stats"):
+        left = "  <b>/stats</b>  ·  show session statistics (tokens, cost, context)"
+    elif text.startswith("/compact"):
+        left = "  <b>/compact</b>  ·  summarize old history to free up context"
+    elif text.startswith("/banner"):
+        left = "  <b>/banner</b>  ·  show the welcome banner"
     elif text.startswith("/skills"):
         left = "  <b>/skills</b>  ·  list loaded skill files"
     elif text.startswith("/help"):
@@ -180,8 +189,8 @@ def get_toolbar() -> HTML:
     elif text.startswith("/"):
         left = (
             "  Commands: "
-            "<b>/model</b>  <b>/key</b>  <b>/clear</b>  "
-            "<b>/skills</b>  <b>/help</b>  ·  "
+            "<b>/model</b>  <b>/key</b>  <b>/clear</b>  <b>/stats</b>  "
+            "<b>/compact</b>  <b>/help</b>  ·  "
             "type <b>exit</b> to quit"
         )
     else:

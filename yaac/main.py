@@ -233,7 +233,28 @@ async def run_session(model: str, beast_context: str = "") -> None:
         if user_input.lower() in ("/clear", "/reset"):
             clear_history()
             message_history = []
+            session_cost[0] = 0.0
+            session_tokens[0] = 0
+            session_tokens[1] = 0
+            set_toolbar_stats("")
             print_info("Conversation history cleared.")
+            continue
+
+        if user_input.lower() == "/banner":
+            print_welcome()
+            continue
+
+        if user_input.lower() == "/stats":
+            _print_stats(model, message_history, session_cost, session_tokens)
+            continue
+
+        if user_input.lower() == "/compact":
+            if len(message_history) <= 2:
+                print_info("History is already minimal — nothing to compact.")
+            else:
+                print_info("Compacting conversation history...")
+                message_history[:] = await compact_history(message_history, model)
+                print_info("History compacted.")
             continue
 
         if user_input.lower() == "/help":
@@ -507,6 +528,38 @@ def _print_patch(path: str, diff: str, language: str | None = None) -> None:
 
 
 
+def _print_stats(
+    model: str,
+    message_history: list,
+    session_cost: list[float],
+    session_tokens: list[int],
+) -> None:
+    from .config import get_context_window, get_model_price
+
+    turns = len([m for m in message_history if hasattr(m, 'parts') and any(
+        hasattr(p, 'content') and not hasattr(p, 'tool_name') for p in m.parts
+    )]) // 2 or len(message_history) // 2
+    ctx_window = get_context_window(model)
+    est_tokens = _estimate_history_tokens(message_history)
+
+    console.print(f"\n[bold cyan]Session Stats[/bold cyan]")
+    console.print(f"  [dim]Model:[/dim]           [white]{model}[/white]")
+    if ctx_window:
+        pct = est_tokens / ctx_window * 100
+        console.print(f"  [dim]Context:[/dim]         ~{est_tokens:,} / {ctx_window:,} tokens ({pct:.1f}%)")
+    console.print(f"  [dim]Messages:[/dim]        {len(message_history)}")
+    s_in, s_out = session_tokens
+    if s_in or s_out:
+        console.print(f"  [dim]Tokens:[/dim]          in {s_in:,} · out {s_out:,} · total {s_in + s_out:,}")
+    price = get_model_price(model)
+    if price:
+        console.print(f"  [dim]Pricing:[/dim]         ${price[0]:.2f} / ${price[1]:.2f} per M tokens (in/out)")
+    cost = session_cost[0]
+    cost_str = f"<$0.001" if 0 < cost < 0.001 else f"${cost:.4f}"
+    console.print(f"  [dim]Session cost:[/dim]    {cost_str}")
+    console.print()
+
+
 def _print_skills(skills: list[str]) -> None:
     if not skills:
         console.print("[dim]No skills loaded.[/dim]")
@@ -520,12 +573,15 @@ def _print_skills(skills: list[str]) -> None:
 def _print_help(skills: list[str]) -> None:
     console.print(
         "\n[bold cyan]YAAC[/bold cyan] — Commands:\n"
-        "  [cyan]/clear[/cyan]          Clear conversation history\n"
-        "  [cyan]/skills[/cyan]         List loaded skills\n"
+        "  [cyan]/clear[/cyan]          Clear conversation history and reset costs\n"
         "  [cyan]/model[/cyan]          Open interactive provider/model picker\n"
         "  [cyan]/model <id>[/cyan]     Switch model directly (e.g. [dim]openai:gpt-4o[/dim])\n"
         "  [cyan]/key[/cyan]            Show API key status for the current provider\n"
         "  [cyan]/key <value>[/cyan]    Set & save the API key for the current provider\n"
+        "  [cyan]/stats[/cyan]          Show session statistics (tokens, cost, context usage)\n"
+        "  [cyan]/compact[/cyan]        Summarize old history to free up context space\n"
+        "  [cyan]/banner[/cyan]         Show the welcome banner\n"
+        "  [cyan]/skills[/cyan]         List loaded skills\n"
         "  [cyan]!<cmd>[/cyan]          Run a shell command directly (e.g. [dim]!git status[/dim])\n"
         "  [cyan]i[/cyan]               Interrupt the current run and add more details\n"
         "  [cyan]/help[/cyan]           Show this help\n"
