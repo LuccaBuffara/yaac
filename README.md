@@ -17,6 +17,7 @@ Runs in your terminal, reads and edits your files, executes commands — like Cl
 - 🔍 **LSP integration** — real type errors and code intelligence (hover, go-to-definition, references)
 - 🧠 **Project memory** — durable `.yaac/memory/MEMORY.md` memory that is auto-injected into the agent prompt
 - 📋 **Hierarchical AGENTS.md** — Claude-style `AGENTS.md` files loaded from parent directories down to the current workspace
+- 🔌 **MCP ecosystem** — Claude-style MCP server configs bridged into YAAC toolsets with `--mcp-config`
 - ⚡ **Streaming output** — text streams in real-time; tool calls shown inline
 - 🛑 **Interrupt & refine** — press `i` during a run to interrupt and add more details
 
@@ -92,6 +93,7 @@ Just type your request at the `>` prompt:
 | `/model` | Open interactive model picker |
 | `/memory` | Show discovered `AGENTS.md` files and project memory |
 | `/model <provider:model>` | Switch model (e.g. `openai:gpt-4o`) |
+| `/mcp` | Show the active MCP config, loaded servers, and warnings |
 | `/key` | Show API key status for current provider |
 | `/key <value>` | Set & save the API key for the current provider |
 
@@ -110,6 +112,7 @@ Press **`i`** while YAAC is running to interrupt the current turn. You'll be pro
 | `MISTRAL_API_KEY` | Mistral API key |
 | `YAAC_MODEL` | Default model (overrides `~/.yaac/config.json`) |
 | `YAAC_DEBUG` | Set to `1` for full error tracebacks |
+| `YAAC_MCP_CONFIG` | Default MCP config file path |
 
 API keys and the default model are also persisted in `~/.yaac/config.json` when set via `/key` or `/model`.
 
@@ -168,6 +171,58 @@ Use the format `provider:model-id` anywhere a model is expected.
 |------|-------------|
 | `todo_read` | Read all todos for the current session |
 | `todo_write` | Create or update session-scoped todos |
+
+### MCP ecosystem
+
+YAAC can load Claude-style MCP server configs and expose their tools alongside the built-in tool suite.
+
+```bash
+# Use an explicit config
+yaac --mcp-config .mcp.json
+
+# Or set a default path
+export YAAC_MCP_CONFIG=/path/to/mcp.json
+yaac
+```
+
+If no explicit path is supplied, YAAC checks these locations in order:
+
+1. `YAAC_MCP_CONFIG`
+2. `./.mcp.json`
+3. `./.yaac/mcp.json`
+
+Config format matches Claude/PydanticAI MCP JSON:
+
+```json
+{
+  "mcpServers": {
+    "docs": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] }
+  }
+}
+```
+
+There is also a local test example in [`examples/mcp/`](examples/mcp/):
+
+```bash
+./venv/bin/pip install mcp
+yaac --mcp-config examples/mcp/mcp.sample.json
+```
+
+The sample config points at a tiny local stdio MCP server with three test tools:
+
+- `echo(text)`
+- `reverse(text)`
+- `add(a, b)`
+
+Inside YAAC, run `/mcp` to confirm the server loaded, then try prompts like:
+
+```text
+Use the echo MCP tool to repeat: hello from MCP
+Use the reverse MCP tool on: abcdef
+Use the add MCP tool with 7 and 35
+```
+
+See [`examples/mcp/README.md`](examples/mcp/README.md) for full setup notes.
 
 ---
 

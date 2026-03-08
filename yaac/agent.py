@@ -4,6 +4,7 @@ from pydantic_ai import Agent, Tool
 
 from .config import get_current_model, resolve_model
 from .context_files import build_context_prompt
+from .mcp import MCPLoadResult, build_mcp_prompt_section
 from .tools import (
     read_file,
     write_file,
@@ -108,14 +109,22 @@ Only ask the user if you genuinely cannot determine something after investigatin
 def create_agent(
     model_name: str | None = None,
     system_prompt_addition: str = "",
+    mcp_load_result: MCPLoadResult | None = None,
 ) -> Agent:
     """Create and configure the YAAC agent."""
     init_skills()
     ensure_plan_mode_profile()
 
     model = resolve_model(model_name or get_current_model())
+    mcp_load_result = mcp_load_result or MCPLoadResult(config_path=None, servers=[], warnings=[])
     context_prompt = build_context_prompt()
-    system_prompt = SYSTEM_PROMPT + build_catalog() + context_prompt + system_prompt_addition
+    system_prompt = (
+        SYSTEM_PROMPT
+        + build_catalog()
+        + context_prompt
+        + build_mcp_prompt_section(mcp_load_result)
+        + system_prompt_addition
+    )
 
     tools = [
         Tool(read_file, max_retries=3),
@@ -144,4 +153,5 @@ def create_agent(
         model=model,
         system_prompt=system_prompt,
         tools=tools,
+        toolsets=[runtime.server for runtime in mcp_load_result.servers],
     )

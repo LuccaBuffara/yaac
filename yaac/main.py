@@ -25,6 +25,7 @@ from .config import (
 _UNLIMITED = UsageLimits(request_limit=None)
 from .context_files import discover_agents_files, discover_memory_file
 from .tools.memory_tools import _memory_path, _DEFAULT_MEMORY_TEMPLATE
+from .mcp import describe_mcp_status, load_mcp_ecosystem
 from .history import (
     clear_history,
     trim_tool_results, trim_history, prune_old_tool_results, compact_history,
@@ -159,13 +160,18 @@ async def _run_shell_escape(command: str) -> None:
         console.print(f"[dim]exit {proc.returncode}[/dim]")
 
 
-async def run_session(model: str, beast_context: str = "") -> None:
+async def run_session(model: str, beast_context: str = "", mcp_config: str | None = None) -> None:
     from .session import init_session
     init_session()
 
     set_current_model(model)
+    mcp_load_result = load_mcp_ecosystem(mcp_config)
     try:
-        agent = create_agent(model, system_prompt_addition=beast_context)
+        agent = create_agent(
+            model,
+            system_prompt_addition=beast_context,
+            mcp_load_result=mcp_load_result,
+        )
     except Exception as e:
         agent = None
         _init_error = str(e)
@@ -207,6 +213,13 @@ async def run_session(model: str, beast_context: str = "") -> None:
     if skills:
         names = ", ".join(f"[cyan]{s}[/cyan]" for s in skills)
         console.print(f"[dim]Skills:[/dim] {names}\n")
+
+    if mcp_load_result.config_path or mcp_load_result.warnings:
+        if mcp_load_result.servers:
+            server_names = ", ".join(f"[cyan]{runtime.name}[/cyan]" for runtime in mcp_load_result.servers)
+            console.print(f"[dim]MCP servers:[/dim] {server_names}")
+        for warning in mcp_load_result.warnings:
+            console.print(f"[yellow]MCP warning:[/yellow] {warning}")
 
     session_cost: list[float] = [0.0]      # mutable accumulators passed into _run_turn
     session_tokens: list[int] = [0, 0]    # [input_total, output_total]
@@ -290,6 +303,10 @@ async def run_session(model: str, beast_context: str = "") -> None:
             _print_help(skills)
             continue
 
+        if user_input.lower() == "/mcp":
+            console.print(describe_mcp_status(mcp_load_result))
+            continue
+
         if user_input.lower() == "/skills":
             _print_skills(skills)
             continue
@@ -311,7 +328,11 @@ async def run_session(model: str, beast_context: str = "") -> None:
                 set_current_model(model)
                 save_default_model(model)
                 try:
-                    agent = create_agent(model, system_prompt_addition=beast_context)
+                    agent = create_agent(
+                        model,
+                        system_prompt_addition=beast_context,
+                        mcp_load_result=mcp_load_result,
+                    )
                 except Exception as e:
                     agent = None
                     print_error(f"Could not initialise model: {e}")
@@ -651,6 +672,7 @@ def _print_help(skills: list[str]) -> None:
         "  [cyan]/compact[/cyan]        Summarize old history to free up context space\n"
         "  [cyan]/banner[/cyan]         Show the welcome banner\n"
         "  [cyan]/skills[/cyan]         List loaded skills\n"
+        "  [cyan]/mcp[/cyan]            Show active MCP config, servers, and warnings\n"
         "  [cyan]!<cmd>[/cyan]          Run a shell command directly (e.g. [dim]!git status[/dim])\n"
         "  [cyan]i[/cyan]               Interrupt the current run and add more details\n"
         "  [cyan]/help[/cyan]           Show this help\n"
@@ -682,6 +704,15 @@ def main() -> None:
             "Defaults to YAAC_MODEL env var or ~/.yaac/config.json."
         ),
     )
+    parser.add_argument(
+        "--mcp-config",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Claude-style MCP config JSON path. If omitted, YAAC checks YAAC_MCP_CONFIG, "
+            "~/.yaac/config.json, ./.mcp.json, and ./.yaac/mcp.json."
+        ),
+    )
     args = parser.parse_args()
 
     # Load any API keys saved in ~/.yaac/config.json into the environment first.
@@ -690,7 +721,7 @@ def main() -> None:
     model = args.model or load_default_model()
 
     try:
-        asyncio.run(run_session(model))
+        asyncio.run(run_session(model, mcp_config=args.mcp_config))
     except KeyboardInterrupt:
         pass
 

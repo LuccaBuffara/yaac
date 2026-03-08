@@ -128,7 +128,9 @@ def build_completer() -> NestedCompleter:
         "/help":    None,
         "/clear":   None,
         "/reset":   None,
+        "/memory":  {"init": None},
         "/skills":  None,
+        "/mcp":     None,
         "/key":     None,
         "/model":   model_completions,
         "/stats":   None,
@@ -184,13 +186,17 @@ def get_toolbar() -> HTML:
         left = "  <b>/banner</b>  ·  show the welcome banner"
     elif text.startswith("/skills"):
         left = "  <b>/skills</b>  ·  list loaded skill files"
+    elif text.startswith("/memory"):
+        left = "  <b>/memory</b>  ·  show project memory or use <b>/memory init</b>"
+    elif text.startswith("/mcp"):
+        left = "  <b>/mcp</b>  ·  show active MCP config, servers, and warnings"
     elif text.startswith("/help"):
         left = "  <b>/help</b>  ·  show all commands"
     elif text.startswith("/"):
         left = (
             "  Commands: "
-            "<b>/model</b>  <b>/key</b>  <b>/clear</b>  <b>/stats</b>  "
-            "<b>/compact</b>  <b>/help</b>  ·  "
+            "<b>/model</b>  <b>/key</b>  <b>/memory</b>  <b>/mcp</b>  "
+            "<b>/clear</b>  <b>/stats</b>  <b>/compact</b>  <b>/help</b>  ·  "
             "type <b>exit</b> to quit"
         )
     else:
@@ -222,10 +228,11 @@ async def _select(
     Keys:
       ↑ / k             move up
       ↓ / j             move down
+      Type text         filter items
       Enter / Space     confirm selection
       Esc / q / Ctrl-C  cancel
 
-    Returns the value field of the selected item, or None if cancelled.
+    Returns the value field of the selected visible item, or None if cancelled.
     """
     from prompt_toolkit.application import Application
     from prompt_toolkit.formatted_text import FormattedText
@@ -238,25 +245,57 @@ async def _select(
         return None
 
     cursor = [0]
+    query = [""]
     result: list[Any] = [None]
     confirmed = [False]
+
+    def _filtered_items() -> list[tuple[Any, str]]:
+        q = query[0].strip().lower()
+        if not q:
+            return items
+        return [item for item in items if q in item[1].lower()]
+
+    def _visible_items() -> list[tuple[Any, str]]:
+        visible = _filtered_items()
+        if cursor[0] >= len(visible):
+            cursor[0] = max(0, len(visible) - 1)
+        return visible
 
     kb = KeyBindings()
 
     @kb.add("up")
     @kb.add("k")
     def _up(event: Any) -> None:
-        cursor[0] = (cursor[0] - 1) % len(items)
+        visible = _visible_items()
+        if visible:
+            cursor[0] = (cursor[0] - 1) % len(visible)
 
     @kb.add("down")
     @kb.add("j")
     def _down(event: Any) -> None:
-        cursor[0] = (cursor[0] + 1) % len(items)
+        visible = _visible_items()
+        if visible:
+            cursor[0] = (cursor[0] + 1) % len(visible)
+
+    @kb.add("backspace")
+    def _backspace(event: Any) -> None:
+        if query[0]:
+            query[0] = query[0][:-1]
+            cursor[0] = 0
+
+    @kb.add("<any>")
+    def _type(event: Any) -> None:
+        if event.data and event.data.isprintable() and not event.data.isspace():
+            query[0] += event.data
+            cursor[0] = 0
 
     @kb.add("enter")
     @kb.add(" ")
     def _confirm(event: Any) -> None:
-        result[0] = items[cursor[0]][0]
+        visible = _visible_items()
+        if not visible:
+            return
+        result[0] = visible[cursor[0]][0]
         confirmed[0] = True
         event.app.exit()
 
@@ -267,12 +306,16 @@ async def _select(
         event.app.exit()
 
     def _render() -> FormattedText:
+        visible = _visible_items()
         lines: list[tuple[str, str]] = []
         lines.append(("fg:ansicyan bold", f"\n  {title}\n"))
         if subtitle:
             lines.append(("fg:ansibrightblack", f"  {subtitle}\n"))
+        lines.append(("fg:ansibrightblack", f"  Search: {query[0] or '—'}\n"))
         lines.append(("", "\n"))
-        for i, (_, label) in enumerate(items):
+        if not visible:
+            lines.append(("fg:ansibrightblack", "  No matching items\n"))
+        for i, (_, label) in enumerate(visible):
             if i == cursor[0]:
                 lines.append(("fg:ansicyan bold", f"  ❯ {label}\n"))
             else:
@@ -280,7 +323,7 @@ async def _select(
         lines.append(("", "\n"))
         lines.append((
             "fg:ansibrightblack",
-            "  ↑ ↓  /  j k  move    Enter  /  Space  confirm    Esc  /  q  cancel\n",
+            "  Type to filter  ·  Backspace edit  ·  ↑ ↓ / j k move  ·  Enter / Space confirm  ·  Esc / q cancel\n",
         ))
         return FormattedText(lines)
 
