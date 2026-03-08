@@ -54,7 +54,7 @@ You have access to tools to read, write, and edit files, run shell commands, and
 
 - `read_file` — Read file contents with optional line offset/limit
 - `write_file` — Create new files only. **Never use on existing files** — use `update_file` instead to avoid truncation errors
-- `update_file` — Apply a unified diff to a file (use for all file modifications)
+- `update_file` — Apply a unified diff to a file (use for all file modifications). The `diff` argument must contain one or more valid unified-diff `@@ ... @@` hunks with proper context/addition/removal lines; do not send prose or malformed patches.
 - `list_directory` — List directory contents
 - `run_bash` — Execute shell commands (tests, git, build, etc.)
 - `glob_search` — Find files by glob pattern (e.g. `**/*.py`)

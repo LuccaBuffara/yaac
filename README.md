@@ -140,7 +140,7 @@ Use the format `provider:model-id` anywhere a model is expected.
 |------|-------------|
 | `read_file` | Read file contents with line numbers (supports offset/limit) |
 | `write_file` | Create a new file |
-| `update_file` | Apply a unified diff to an existing file |
+| `update_file` | Apply a unified diff with valid `@@ ... @@` hunks to an existing file |
 | `list_directory` | List directory contents with sizes |
 
 ### Shell & search
