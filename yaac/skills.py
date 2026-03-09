@@ -119,21 +119,80 @@ def list_skill_names() -> list[str]:
     return sorted(_registry.keys())
 
 
+def discover_skills_in(dirs: list[Path]) -> dict[str, SkillMeta]:
+    """Discover skills from an explicit list of directories.
+
+    Same logic as discover_skills() but limited to the given paths.
+    """
+    found: dict[str, SkillMeta] = {}
+    for base in dirs:
+        if not base.is_dir():
+            continue
+        for skill_md in sorted(base.glob("*/SKILL.md")):
+            try:
+                text = skill_md.read_text(encoding="utf-8")
+                fields, _ = _parse_frontmatter(text)
+                name = fields.get("name", "").strip()
+                description = fields.get("description", "").strip()
+                if not description:
+                    continue
+                if not name:
+                    name = skill_md.parent.name
+                if name not in found:
+                    found[name] = SkillMeta(name=name, description=description, path=skill_md)
+            except Exception:
+                continue
+    return found
+
+
+def build_scoped_registry(
+    allowed_names: list[str] | None = None,
+    extra_dirs: list[Path] | None = None,
+) -> dict[str, SkillMeta]:
+    """Build a skill registry for a subagent.
+
+    Args:
+        allowed_names: If provided, only include these skills from the global
+            registry. ``None`` means include all global skills.
+        extra_dirs: Additional directories to scan for profile-exclusive skills.
+
+    Returns:
+        A merged registry containing the selected global skills plus any
+        profile-exclusive skills.
+    """
+    if allowed_names is not None:
+        registry = {k: v for k, v in _registry.items() if k in allowed_names}
+    else:
+        registry = dict(_registry)
+
+    if extra_dirs:
+        extra = discover_skills_in(extra_dirs)
+        for k, v in extra.items():
+            registry.setdefault(k, v)
+
+    return registry
+
+
 # ---------------------------------------------------------------------------
 # Catalog (Tier 1 — injected into system prompt)
 # ---------------------------------------------------------------------------
 
-def build_catalog() -> str:
+def build_catalog(registry: dict[str, SkillMeta] | None = None) -> str:
     """Build the XML skill catalog for injection into the system prompt.
+
+    Args:
+        registry: Skill registry to build the catalog from. Defaults to the
+            global registry when ``None``.
 
     Returns empty string if no skills are available.
     """
-    if not _registry:
+    source = registry if registry is not None else _registry
+    if not source:
         return ""
 
     skill_tags = "\n".join(
         f"  <skill>\n    <name>{s.name}</name>\n    <description>{s.description}</description>\n  </skill>"
-        for s in _registry.values()
+        for s in source.values()
     )
 
     return f"""
@@ -152,29 +211,17 @@ You have access to specialized skills. When a task matches a skill's description
 # Activation tool (Tier 2 — called on-demand by the agent)
 # ---------------------------------------------------------------------------
 
-def activate_skill(name: str) -> str:
-    """Load the full instructions for a skill by name.
-
-    Call this when a task matches a skill's description. The skill's complete
-    instructions will be returned and you should follow them for the task.
-
-    Args:
-        name: The skill name as listed in the available_skills catalog.
-
-    Returns:
-        Full skill instructions wrapped in skill_content tags,
-        or an error message if the skill is not found.
-    """
-    skill = _registry.get(name)
+def _activate_from_registry(registry: dict[str, SkillMeta], name: str) -> str:
+    """Core activation logic that works with any registry."""
+    skill = registry.get(name)
     if not skill:
-        available = ", ".join(_registry.keys()) or "none"
+        available = ", ".join(registry.keys()) or "none"
         return f"Skill '{name}' not found. Available skills: {available}"
 
     try:
         text = skill.path.read_text(encoding="utf-8")
         _, body = _parse_frontmatter(text)
 
-        # List any bundled resources (scripts, references, assets)
         resources = _list_resources(skill.directory)
         resources_section = ""
         if resources:
@@ -191,6 +238,46 @@ def activate_skill(name: str) -> str:
         )
     except Exception as e:
         return f"Error loading skill '{name}': {e}"
+
+
+def activate_skill(name: str) -> str:
+    """Load the full instructions for a skill by name.
+
+    Call this when a task matches a skill's description. The skill's complete
+    instructions will be returned and you should follow them for the task.
+
+    Args:
+        name: The skill name as listed in the available_skills catalog.
+
+    Returns:
+        Full skill instructions wrapped in skill_content tags,
+        or an error message if the skill is not found.
+    """
+    return _activate_from_registry(_registry, name)
+
+
+def make_scoped_activate_skill(registry: dict[str, SkillMeta]):
+    """Return an activate_skill function bound to a specific registry.
+
+    Used to give subagents their own independent skill set.
+    """
+
+    async def scoped_activate_skill(name: str) -> str:
+        """Load the full instructions for a skill by name.
+
+        Call this when a task matches a skill's description. The skill's complete
+        instructions will be returned and you should follow them for the task.
+
+        Args:
+            name: The skill name as listed in the available_skills catalog.
+
+        Returns:
+            Full skill instructions wrapped in skill_content tags,
+            or an error message if the skill is not found.
+        """
+        return _activate_from_registry(registry, name)
+
+    return scoped_activate_skill
 
 
 def _list_resources(skill_dir: Path) -> list[str]:

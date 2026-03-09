@@ -1,10 +1,22 @@
 """YAAC (Yet Another Agentic Coder) AI agent powered by Pydantic AI."""
 
+from __future__ import annotations
+
+from typing import Callable
+
 from pydantic_ai import Agent, Tool
 
 from .config import get_current_model, resolve_model
 from .context_files import build_context_prompt
 from .mcp import MCPLoadResult, build_mcp_prompt_section
+from .skills import (
+    SkillMeta,
+    init_skills,
+    build_catalog,
+    activate_skill,
+    list_skill_names,
+    make_scoped_activate_skill,
+)
 from .tools import (
     read_file,
     write_file,
@@ -25,7 +37,26 @@ from .tools import (
     memory_read,
     memory_write,
 )
-from .skills import init_skills, build_catalog, activate_skill, list_skill_names
+
+TOOL_REGISTRY: dict[str, Callable] = {
+    "read_file": read_file,
+    "write_file": write_file,
+    "update_file": update_file,
+    "list_directory": list_directory,
+    "run_bash": run_bash,
+    "glob_search": glob_search,
+    "grep_search": grep_search,
+    "spawn_subagent": spawn_subagent,
+    "create_skill": create_skill,
+    "create_agent_profile": create_agent_profile,
+    "plan_mode": plan_mode,
+    "todo_read": todo_read,
+    "todo_write": todo_write,
+    "lsp_diagnostics": lsp_diagnostics,
+    "lsp_query": lsp_query,
+    "memory_read": memory_read,
+    "memory_write": memory_write,
+}
 
 SYSTEM_PROMPT = """You are YAAC (Yet Another Agentic Coder), an expert AI coding assistant that helps with software engineering tasks.
 
@@ -60,9 +91,9 @@ You have access to tools to read, write, and edit files, run shell commands, and
 - `glob_search` — Find files by glob pattern (e.g. `**/*.py`)
 - `grep_search` — Search file contents by regex pattern
 - `activate_skill` — Load full instructions for a skill by name
-- `spawn_subagent` — Delegate a subtask to an independent subagent; optionally specify a `profile` for a specialized persona
+- `spawn_subagent` — Delegate a subtask to an independent subagent; optionally specify a `profile` for a specialized persona with its own tools and skills
 - `create_skill` — Persist a new skill to `~/.yaac/skills/` so it's available in all future sessions. Optionally bundle sub-files (scripts, templates, examples, reference docs) alongside `SKILL.md` using the `files` parameter — a dict of relative path → content (e.g. `{"scripts/setup.sh": "#!/bin/bash\n...", "templates/config.yaml": "..."}`)
-- `create_agent_profile` — Persist a new agent profile to `.yaac/agents/` for use with `spawn_subagent`
+- `create_agent_profile` — Persist a new agent profile to `.yaac/agents/` for use with `spawn_subagent`. Profiles can declare their own `tools` (list of tool names) and `skills` (list of skill names) so the subagent has an independent, restricted toolset. Profile-exclusive skills can also be placed in a `skills/` subdirectory inside the profile folder
 - `plan_mode` — Delegate planning to a dedicated read-only planning agent
 - `todo_read` — Read all todos for the current session
 - `todo_write` — Create or update session-scoped todos (supports merge and replace modes)
@@ -92,7 +123,7 @@ Use `lsp_query` to understand code structure:
 
 - Use `spawn_subagent` when a task has clearly independent subtasks that benefit from a fresh context, or when a subtask is large enough to pollute the current context.
 - Use `create_skill` when you notice a recurring pattern or specialized workflow that would benefit from persistent instructions (e.g. a deploy process, a testing strategy, a code style guide). Skills are saved to ~/.yaac/skills/ and available in all future sessions globally. Use the `files` parameter to bundle supporting assets alongside `SKILL.md`: scripts the agent should run, templates to copy, reference docs to read, or example code to follow — mirroring the agentskills.io format where a skill folder is a complete, self-contained toolkit.
-- Use `create_agent_profile` when a subtask calls for a fundamentally different focus or persona (e.g. a dedicated security reviewer, a documentation writer, a test engineer). Profiles are saved to ~/.yaac/agents/ and available globally.
+- Use `create_agent_profile` when a subtask calls for a fundamentally different focus or persona (e.g. a dedicated security reviewer, a documentation writer, a test engineer). Profiles are saved to ~/.yaac/agents/ and available globally. Use the `tools` parameter to restrict which tools the subagent may use, and the `skills` parameter to restrict which skills it sees. You can also add profile-exclusive skills by placing them under a `skills/` subdirectory inside the profile folder.
 
 ## Working directory
 
@@ -110,8 +141,21 @@ def create_agent(
     model_name: str | None = None,
     system_prompt_addition: str = "",
     mcp_load_result: MCPLoadResult | None = None,
+    allowed_tools: list[str] | None = None,
+    skill_registry: dict[str, SkillMeta] | None = None,
 ) -> Agent:
-    """Create and configure the YAAC agent."""
+    """Create and configure the YAAC agent.
+
+    Args:
+        model_name: Model identifier override (defaults to current config).
+        system_prompt_addition: Extra text appended to the system prompt.
+        mcp_load_result: MCP servers to expose as toolsets.
+        allowed_tools: When set, only include these tool names from
+            ``TOOL_REGISTRY``. ``None`` means all tools.
+        skill_registry: When set, use this registry instead of the global one
+            for the skill catalog and ``activate_skill``. ``None`` means use
+            the global registry.
+    """
     init_skills()
     ensure_plan_mode_profile()
 
@@ -120,33 +164,25 @@ def create_agent(
     context_prompt = build_context_prompt()
     system_prompt = (
         SYSTEM_PROMPT
-        + build_catalog()
+        + build_catalog(registry=skill_registry)
         + context_prompt
         + build_mcp_prompt_section(mcp_load_result)
         + system_prompt_addition
     )
 
-    tools = [
-        Tool(read_file, max_retries=3),
-        Tool(write_file, max_retries=3),
-        Tool(update_file, max_retries=3),
-        Tool(list_directory, max_retries=3),
-        Tool(run_bash, max_retries=3),
-        Tool(glob_search, max_retries=3),
-        Tool(grep_search, max_retries=3),
-        Tool(spawn_subagent, max_retries=3),
-        Tool(create_skill, max_retries=3),
-        Tool(create_agent_profile, max_retries=3),
-        Tool(plan_mode, max_retries=3),
-        Tool(todo_read, max_retries=3),
-        Tool(todo_write, max_retries=3),
-        Tool(lsp_diagnostics, max_retries=3),
-        Tool(lsp_query, max_retries=3),
-        Tool(memory_read, max_retries=3),
-        Tool(memory_write, max_retries=3),
-    ]
+    if allowed_tools is not None:
+        tools = [
+            Tool(fn, max_retries=3)
+            for name, fn in TOOL_REGISTRY.items()
+            if name in allowed_tools
+        ]
+    else:
+        tools = [Tool(fn, max_retries=3) for fn in TOOL_REGISTRY.values()]
 
-    if list_skill_names():
+    if skill_registry is not None:
+        if skill_registry:
+            tools.append(Tool(make_scoped_activate_skill(skill_registry), max_retries=3))
+    elif list_skill_names():
         tools.append(Tool(activate_skill, max_retries=3))
 
     return Agent(

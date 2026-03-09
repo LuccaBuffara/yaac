@@ -173,13 +173,36 @@ async def create_skill(
     return result
 
 
-async def create_agent_profile(name: str, description: str, system_prompt: str) -> str:
+async def create_agent_profile(
+    name: str,
+    description: str,
+    system_prompt: str,
+    tools: list[str] | None = None,
+    skills: list[str] | None = None,
+) -> str:
     """Persist a new agent profile to ~/.yaac/agents/ for use with spawn_subagent.
+
+    Each profile can declare its own set of tools and skills, independent from
+    the main agent. When the profile is used with ``spawn_subagent``, the
+    subagent will only have access to the declared tools and skills.
+
+    Available tool names: read_file, write_file, update_file, list_directory,
+    run_bash, glob_search, grep_search, spawn_subagent, create_skill,
+    create_agent_profile, plan_mode, todo_read, todo_write, lsp_diagnostics,
+    lsp_query, memory_read, memory_write.
+
+    You can also place profile-exclusive skills under a ``skills/``
+    subdirectory inside the profile folder. These skills are only available to
+    subagents spawned with this profile.
 
     Args:
         name: Lowercase alphanumeric with hyphens (e.g. 'test-writer').
         description: What this agent specializes in.
         system_prompt: System prompt extension for this agent.
+        tools: Optional list of tool names this profile's subagent may use.
+            When omitted the subagent inherits all tools.
+        skills: Optional list of skill names this profile's subagent may use.
+            When omitted the subagent inherits all discovered skills.
 
     Returns:
         Success or error message.
@@ -191,16 +214,41 @@ async def create_agent_profile(name: str, description: str, system_prompt: str) 
         emit_return("create_agent_profile", result)
         return result
 
+    from ..agent import TOOL_REGISTRY
+
+    if tools is not None:
+        unknown = [t for t in tools if t not in TOOL_REGISTRY]
+        if unknown:
+            result = f"Error: unknown tool names: {', '.join(unknown)}. Available: {', '.join(TOOL_REGISTRY.keys())}"
+            emit_return("create_agent_profile", result)
+            return result
+
     profile_dir = Path.home() / ".yaac" / "agents" / name
     profile_file = profile_dir / "AGENT.md"
 
     try:
         profile_dir.mkdir(parents=True, exist_ok=True)
-        content = f"---\nname: {name}\ndescription: {description}\n---\n\n{system_prompt}\n"
+
+        fm_lines = [f"name: {name}", f"description: {description}"]
+        if tools is not None:
+            fm_lines.append(f"tools: {', '.join(tools)}")
+        if skills is not None:
+            fm_lines.append(f"skills: {', '.join(skills)}")
+
+        frontmatter = "\n".join(fm_lines)
+        content = f"---\n{frontmatter}\n---\n\n{system_prompt}\n"
         profile_file.write_text(content, encoding="utf-8")
+
+        extras = []
+        if tools is not None:
+            extras.append(f"tools=[{', '.join(tools)}]")
+        if skills is not None:
+            extras.append(f"skills=[{', '.join(skills)}]")
+        config_note = f" Config: {'; '.join(extras)}." if extras else ""
+
         result = (
             f"Agent profile '{name}' created at {profile_file}. "
-            f"Use spawn_subagent with profile='{name}' to invoke it."
+            f"Use spawn_subagent with profile='{name}' to invoke it.{config_note}"
         )
     except Exception as e:
         result = f"Error creating agent profile: {e}"
