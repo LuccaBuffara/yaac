@@ -275,9 +275,9 @@ to inspect the discovered files or create a starter project memory file.
 
 ## Conversation history & context management
 
-- History is persisted to `.yaac/history.json` in the working directory.
+- History is persisted to `.yaac/history.json` in the working directory after every turn, and resumed automatically the next time YAAC starts in that directory. Start `yaac --no-resume` for a fresh conversation.
 - Tool results are truncated automatically to avoid bloating the context.
-- When input token usage exceeds **65 %** of the model's context window, history is compacted automatically.
+- When the input tokens of a single request exceed **65 %** of the model's context window, history is compacted automatically.
 - Use `/clear` to reset the conversation entirely.
 
 ---

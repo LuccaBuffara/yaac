@@ -1,4 +1,6 @@
 venv/
+.venv/
+.pytest_cache/
 dist/
 *.egg-info/
 .yaac/

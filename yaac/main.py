@@ -10,6 +10,7 @@ from prompt_toolkit.styles import Style
 from .agent import create_agent
 from .commands import COMMAND_REGISTRY
 from .config import check_api_key, load_api_keys, load_default_model, set_current_model
+from .history import load_history
 from .lsp.manager import shutdown_all as _lsp_shutdown
 from .mcp import load_mcp_ecosystem
 from .runner import read_followup_instruction, run_turn
@@ -29,7 +30,12 @@ async def _run_shell_escape(command: str) -> None:
         console.print(f"[dim]exit {proc.returncode}[/dim]")
 
 
-async def run_session(model: str, beast_context: str = "", mcp_config: str | None = None) -> None:
+async def run_session(
+    model: str,
+    beast_context: str = "",
+    mcp_config: str | None = None,
+    resume: bool = True,
+) -> None:
     from .session import init_session
     init_session()
 
@@ -51,10 +57,11 @@ async def run_session(model: str, beast_context: str = "", mcp_config: str | Non
         complete_while_typing=True,
         bottom_toolbar=get_toolbar,
     )
+    message_history = load_history() if resume else []
     state = SessionState(
         model=model,
         agent=agent,
-        message_history=[],
+        message_history=message_history,
         cost=0.0,
         tokens_in=0,
         tokens_out=0,
@@ -85,6 +92,12 @@ async def run_session(model: str, beast_context: str = "", mcp_config: str | Non
                 f"  Switch model: [cyan]/model <provider:model-id>[/cyan]  "
                 f"(e.g. [dim]openai:gpt-4o[/dim])\n"
             )
+
+    if message_history:
+        console.print(
+            f"[dim]Resumed {len(message_history)} messages from .yaac/history.json "
+            f"— use [/dim][cyan]/clear[/cyan][dim] to start fresh.[/dim]\n"
+        )
 
     if skills:
         names = ", ".join(f"[cyan]{s}[/cyan]" for s in skills)
@@ -196,6 +209,11 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Start with an empty conversation instead of resuming .yaac/history.json.",
+    )
+    parser.add_argument(
         "--mcp-config",
         default=None,
         metavar="PATH",
@@ -210,7 +228,7 @@ def main() -> None:
     model = args.model or load_default_model()
 
     try:
-        asyncio.run(run_session(model, mcp_config=args.mcp_config))
+        asyncio.run(run_session(model, mcp_config=args.mcp_config, resume=not args.no_resume))
     except KeyboardInterrupt:
         pass
 
