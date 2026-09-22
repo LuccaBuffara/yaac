@@ -127,17 +127,41 @@ def calculate_cost(model_str: str, input_tokens: int, output_tokens: int) -> flo
     return (input_tokens / 1_000_000) * input_per_mtok + (output_tokens / 1_000_000) * output_per_mtok
 
 
+def _write_config(data: dict) -> None:
+    """Write the config file with owner-only permissions (it holds API keys)."""
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(CONFIG_PATH.parent, 0o700)
+    except OSError:
+        pass
+    CONFIG_PATH.touch(mode=0o600, exist_ok=True)
+    try:
+        os.chmod(CONFIG_PATH, 0o600)
+    except OSError:
+        pass
+    CONFIG_PATH.write_text(json.dumps(data, indent=2))
+
+
+def _read_config() -> dict:
+    """Return the parsed config file, or an empty dict when missing/corrupt."""
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        loaded = json.loads(CONFIG_PATH.read_text())
+    except Exception as exc:
+        if os.environ.get("YAAC_DEBUG"):
+            import sys
+            print(f"[config] could not read {CONFIG_PATH}: {exc}", file=sys.stderr)
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
 def load_default_model() -> str:
     """Return the configured default model (env var > config file > built-in default)."""
     if env := os.environ.get("YAAC_MODEL"):
         return env
-    if CONFIG_PATH.exists():
-        try:
-            cfg = json.loads(CONFIG_PATH.read_text())
-            if model := cfg.get("model"):
-                return model
-        except Exception:
-            pass
+    if model := _read_config().get("model"):
+        return model
     return DEFAULT_MODEL
 
 
@@ -154,15 +178,9 @@ def set_current_model(model_str: str) -> None:
 
 def save_default_model(model_str: str) -> None:
     """Persist the default model to ~/.yaac/config.json."""
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing: dict = {}
-    if CONFIG_PATH.exists():
-        try:
-            existing = json.loads(CONFIG_PATH.read_text())
-        except Exception:
-            pass
+    existing = _read_config()
     existing["model"] = model_str
-    CONFIG_PATH.write_text(json.dumps(existing, indent=2))
+    _write_config(existing)
 
 
 def resolve_model(model_str: str):
@@ -239,26 +257,14 @@ def check_api_key(model_str: str) -> tuple[bool, str | None]:
 
 def load_api_keys() -> None:
     """Load API keys saved in ~/.yaac/config.json into os.environ (non-overriding)."""
-    if not CONFIG_PATH.exists():
-        return
-    try:
-        cfg = json.loads(CONFIG_PATH.read_text())
-        for env_var, value in cfg.get("keys", {}).items():
-            if value and not os.environ.get(env_var):
-                os.environ[env_var] = value
-    except Exception:
-        pass
+    for env_var, value in _read_config().get("keys", {}).items():
+        if value and not os.environ.get(env_var):
+            os.environ[env_var] = value
 
 
 def save_api_key(env_var: str, value: str) -> None:
     """Save an API key to ~/.yaac/config.json and set it in os.environ."""
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing: dict = {}
-    if CONFIG_PATH.exists():
-        try:
-            existing = json.loads(CONFIG_PATH.read_text())
-        except Exception:
-            pass
+    existing = _read_config()
     existing.setdefault("keys", {})[env_var] = value
-    CONFIG_PATH.write_text(json.dumps(existing, indent=2))
+    _write_config(existing)
     os.environ[env_var] = value

@@ -20,3 +20,6 @@ class SessionState:
     mcp_load_result: Any
     skills: list[str]
     prompt_session: "PromptSession"
+    # Input tokens of the most recent request — the actual context occupancy,
+    # since every turn resends the whole history.
+    last_input_tokens: int = 0

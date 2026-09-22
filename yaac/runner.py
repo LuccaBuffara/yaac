@@ -13,7 +13,10 @@ from pydantic_ai.usage import UsageLimits
 from rich.markdown import Markdown
 
 from .config import get_context_window, calculate_cost
-from .history import trim_tool_results, trim_history, prune_old_tool_results, compact_history, _COMPACT_THRESHOLD
+from .history import (
+    trim_tool_results, trim_history, prune_old_tool_results,
+    compact_history, save_history, _COMPACT_THRESHOLD,
+)
 from .tool_events import set_handler, reset_handler
 from .ui import console, print_info
 from .completer import set_toolbar_stats
@@ -291,11 +294,12 @@ async def run_turn(state: SessionState, user_input: str) -> None:
         out_tok = usage.output_tokens or 0
         state.tokens_in += in_tok
         state.tokens_out += out_tok
+        state.last_input_tokens = in_tok
         s_total = state.tokens_in + state.tokens_out
         if s_total:
             parts_stats.append(f"in {state.tokens_in:,} · out {state.tokens_out:,} · total {s_total:,} tok")
-        if ctx_window and state.tokens_in:
-            input_pct = state.tokens_in / ctx_window
+        if ctx_window and in_tok:
+            input_pct = in_tok / ctx_window
             parts_stats.append(f"ctx {input_pct * 100:.1f}%")
         turn_cost = calculate_cost(state.model, in_tok, out_tok)
         if turn_cost is not None:
@@ -310,3 +314,5 @@ async def run_turn(state: SessionState, user_input: str) -> None:
         print_info("Compacting conversation history to reduce context size...")
         state.message_history[:] = await compact_history(state.message_history, state.model)
         print_info("History compacted.")
+
+    save_history(state.message_history)

@@ -14,7 +14,7 @@ from .config import (
 )
 from .completer import run_model_picker, set_toolbar_stats
 from .context_files import discover_agents_files, discover_memory_file
-from .history import clear_history, compact_history
+from .history import clear_history, compact_history, save_history
 from .mcp import describe_mcp_status
 from .tools.memory_tools import _memory_path, _DEFAULT_MEMORY_TEMPLATE
 from .ui import console, print_error, print_info
@@ -34,7 +34,7 @@ def _estimate_history_tokens(message_history: list) -> int:
 
 def print_stats(state: SessionState) -> None:
     ctx_window = get_context_window(state.model)
-    est_tokens = _estimate_history_tokens(state.message_history)
+    est_tokens = state.last_input_tokens or _estimate_history_tokens(state.message_history)
 
     console.print(f"\n[bold cyan]Session Stats[/bold cyan]")
     console.print(f"  [dim]Model:[/dim]           [white]{state.model}[/white]")
@@ -101,6 +101,7 @@ async def _cmd_clear(state: SessionState, _args: str) -> None:
     state.cost = 0.0
     state.tokens_in = 0
     state.tokens_out = 0
+    state.last_input_tokens = 0
     set_toolbar_stats("")
     print_info("Conversation history cleared.")
 
@@ -146,6 +147,7 @@ async def _cmd_compact(state: SessionState, _args: str) -> None:
     else:
         print_info("Compacting conversation history...")
         state.message_history[:] = await compact_history(state.message_history, state.model)
+        save_history(state.message_history)
         print_info("History compacted.")
 
 
@@ -210,7 +212,11 @@ async def _cmd_key(state: SessionState, args: str) -> None:
         save_api_key(env_var, args)
         print_info(f"[bold]{env_var}[/bold] saved.")
         try:
-            state.agent = create_agent(state.model, system_prompt_addition=state.beast_context)
+            state.agent = create_agent(
+                state.model,
+                system_prompt_addition=state.beast_context,
+                mcp_load_result=state.mcp_load_result,
+            )
         except Exception as e:
             print_error(f"Could not initialise agent: {e}")
 

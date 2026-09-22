@@ -75,8 +75,9 @@ async def write_file(path: str, content: str) -> str:
 
 
 async def update_file(path: str, diff: str) -> str:
-    """Apply a unified diff (@@ hunks) to a file. Token-efficient alternative to
-    edit_file for multi-location changes — only changed lines + context needed.
+    """Apply a unified diff (@@ hunks) to a file. Token-efficient way to make
+    multi-location changes — only changed lines + context needed, instead of
+    rewriting the whole file with write_file.
     --- / +++ headers are optional, but the diff must contain one or more valid
     unified-diff @@ hunks.
 
